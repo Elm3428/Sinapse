@@ -1,0 +1,6 @@
+{
+  "name": "Aniel Gestão - Serviços e Almoxarifado",
+  "description": "Sistema completo de gestão de serviços, ordens de serviço, controle de insumos com RM por matrícula, aplicação em OS, devolução de sobras e dashboard analítico.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
