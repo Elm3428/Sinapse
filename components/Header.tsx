@@ -67,6 +67,8 @@ export function Header({
               <span className="font-medium text-slate-700">{currentViewTitle}</span>
               <span aria-hidden="true">·</span>
               <span>Multi-Setor</span>
+              <span aria-hidden="true">·</span>
+              <span className="text-[10px] font-medium text-slate-400">Projeto de : Evandro Marconato</span>
             </div>
           </div>
         </div>
