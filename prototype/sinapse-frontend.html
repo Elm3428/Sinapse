@@ -565,7 +565,7 @@ function badgeFor(v){
   if(v==='entradas'){const n=lowStock().length;return n?'<span class="badge alert">'+n+'</span>':''}
   return'';
 }
-function crumb(){let t='';NAV.forEach(g=>g[1].forEach(i=>{if(i[0]===U.view)t=i[1]}));return'<div class="crumb"><span>Sinapse</span><span aria-hidden="true">·</span><b>'+esc(t)+'</b><span aria-hidden="true">·</span><span>Multi-Setor</span><span aria-hidden="true">·</span><small>Projeto de : Evandro Marconato</small></div>'}
+function crumb(){let t='';NAV.forEach(g=>g[1].forEach(i=>{if(i[0]===U.view)t=i[1]}));return'<div class="crumb"><span>Sinapse</span><span aria-hidden="true">·</span><b>'+esc(t)+'</b><span aria-hidden="true">·</span><span>Multi-Setor</span><span aria-hidden="true">·</span><small>Projeto de : Brenda Marconato</small></div>'}
 function renderNav(){$('#nav').innerHTML=NAV.map(g=>'<div class="grp"><h3>'+g[0]+'</h3>'+g[1].map(i=>'<button class="nav" data-a="nav" data-v="'+i[0]+'"'+(U.view===i[0]?' aria-current="page"':'')+'><span>'+i[1]+'</span>'+badgeFor(i[0])+'</button>').join('')+'</div>').join('')}
 function render(){
   const a=document.activeElement;const keep=a&&a.dataset&&a.dataset.search?{id:a.id,s:a.selectionStart}:null;
