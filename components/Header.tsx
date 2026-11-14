@@ -68,7 +68,7 @@ export function Header({
               <span aria-hidden="true">·</span>
               <span>Multi-Setor</span>
               <span aria-hidden="true">·</span>
-              <span className="text-[10px] font-medium text-slate-400">Projeto de : Evandro Marconato</span>
+              <span className="text-[10px] font-medium text-slate-400">Projeto de : Brenda Marconato</span>
             </div>
           </div>
         </div>
