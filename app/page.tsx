@@ -14,6 +14,7 @@ import { RelatoriosProdutividadeView } from '@/components/RelatoriosProdutividad
 import { SupabaseModal } from '@/components/SupabaseModal';
 import { PrintServiceOrderModal } from '@/components/PrintServiceOrderModal';
 import { MobileFlutterPreview } from '@/components/MobileFlutterPreview';
+import { AppSettingsView } from '@/components/AppSettingsView';
 
 import { StorageService } from '@/lib/storage';
 import {
@@ -283,6 +284,8 @@ export default function HomePage() {
         return 'Produtividade & Kardex Real-Time';
       case 'supabase_panel':
         return 'Banco de Dados Supabase · aniel';
+      case 'app_settings':
+        return 'Configurações do Sistema';
       default:
         return 'Visão Geral';
     }
@@ -470,6 +473,9 @@ export default function HomePage() {
                   returns={returns}
                 />
               )}
+
+              {/* Configurações do aplicativo e da empresa */}
+              {activeSection === 'app_settings' && <AppSettingsView />}
 
               {/* 9. Supabase Panel */}
               {activeSection === 'supabase_panel' && (
