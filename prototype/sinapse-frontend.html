@@ -28,7 +28,13 @@ h1,h2,h3{font-family:var(--font-display);margin:0;text-wrap:balance;letter-spaci
 .app{display:grid;grid-template-columns:236px minmax(0,1fr);gap:24px;max-width:1360px;margin:0 auto;padding-block:16px 40px}
 .side{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;display:flex;flex-direction:column;gap:18px;padding-block:4px}
 .brand{display:flex;align-items:center;gap:10px}
-.mark{width:30px;height:30px;border-radius:8px;background:var(--fg);color:var(--bg);display:grid;place-items:center;font:700 15px var(--font-display)}
+.mark{width:30px;height:30px;border-radius:8px;background:var(--fg);color:var(--bg);display:grid;place-items:center;font:700 15px var(--font-display);overflow:hidden;flex:none}
+.mark img{width:100%;height:100%;object-fit:contain;background:#fff}
+.brand div:last-child{min-width:0}.brand b,.brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brand span{display:block}
+.logo-box{width:128px;height:128px;border:1px dashed var(--line);border-radius:12px;background:var(--surface-2);display:grid;place-items:center;overflow:hidden;color:var(--muted);font-size:12px;text-align:center;flex:none}
+.logo-box img{width:100%;height:100%;object-fit:contain;background:#fff}
+.logo-row{display:flex;flex-wrap:wrap;gap:18px;align-items:center}
+label.btn input{display:none}
 .brand b{font:700 17px var(--font-display);display:block;line-height:1.1}
 .brand span{font-size:11.5px;color:var(--muted)}
 .grp{display:flex;flex-direction:column;gap:2px}
@@ -148,7 +154,7 @@ tr:last-child td{border-bottom:0}
 
 <div class="app">
   <aside class="side">
-    <div class="brand"><div class="mark">S</div><div><b>Sinapse</b><span>Aniel · Matriz Operacional</span></div></div>
+    <div class="brand" id="brand"></div>
     <nav id="nav"></nav>
     <div class="side-f">
       <button class="btn sm" data-a="demo">Restaurar exemplo</button>
@@ -250,6 +256,11 @@ function load(){try{const r=localStorage.getItem(KEY);if(r){const d=JSON.parse(r
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 S=load();
 const U={view:'dashboard',q:{},osFilter:'todos',pre:{}};
+/* configurações do aplicativo e da empresa (chave própria, como no projeto) */
+const CFG_KEY='sinapse-settings-v1';
+const CFG_FIELDS=[['appName','Nome do aplicativo','Ex.: Aniel Gestão'],['developer','Nome do desenvolvedor','Nome do desenvolvedor'],['companyName','Razão social',''],['tradeName','Nome fantasia',''],['cnpj','CNPJ',''],['stateRegistration','Inscrição estadual',''],['phone','Telefone',''],['email','E-mail',''],['address','Endereço',''],['zipCode','CEP',''],['city','Cidade',''],['state','Estado (UF)','PR'],['website','Site','https://']];
+const CFG=Object.assign({appName:'Aniel Gestão',developer:'Brenda Marconato',companyName:'',tradeName:'',cnpj:'',stateRegistration:'',phone:'',email:'',address:'',city:'',state:'',zipCode:'',website:'',logo:''},(()=>{try{return JSON.parse(localStorage.getItem(CFG_KEY))||{}}catch(e){return{}}})());
+function saveCfg(){try{localStorage.setItem(CFG_KEY,JSON.stringify(CFG));return true}catch(e){return false}}
 
 /* ---------- consultas ---------- */
 const prod=id=>S.products.find(p=>p.id===id);
@@ -552,12 +563,35 @@ const SUBMIT={
   }
 };
 
+VIEWS.configuracoes=function(){
+  const logo=U.logoDraft!==undefined?U.logoDraft:CFG.logo;
+  const ph=Object.fromEntries(CFG_FIELDS.map(f=>[f[0],f[2]]));
+  const one=k=>fld(CFG_FIELDS.find(f=>f[0]===k)[1],k,'<input id="c-'+k+'" name="'+k+'" type="'+(k==='phone'?'tel':k==='email'?'email':'text')+'" placeholder="'+esc(ph[k])+'" value="'+esc(CFG[k])+'">','s2');
+  return head('Configurações do aplicativo','Personalize a identificação do sistema e os dados da empresa usuária.')+
+  '<form data-form="cfg">'+
+  '<section class="panel"><h2>Identidade do aplicativo</h2><div class="form-grid">'+one('appName')+one('developer')+'</div></section>'+
+  '<section class="panel"><h2>Dados da empresa</h2><div class="form-grid">'+['companyName','tradeName','cnpj','stateRegistration','phone','email','address','zipCode','city','state','website'].map(one).join('')+'</div></section>'+
+  '<section class="panel"><h2>Logotipo da empresa</h2><div class="logo-row"><div class="logo-box" id="logo-prev">'+(logo?'<img src="'+esc(logo)+'" alt="Logo da empresa">':'Prévia da logo')+'</div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">'+
+    '<label class="btn">Escolher imagem<input type="file" id="f-logo" accept="image/png,image/jpeg,image/webp,image/svg+xml"></label>'+
+    '<span class="sub">PNG, JPG, WEBP ou SVG, até 2 MB.</span><button type="button" class="btn sm danger" id="logo-clear" data-a="logo-clear"'+(logo?'':' hidden')+'>Remover logo</button></div></div></section>'+
+  '<div class="head" style="margin:16px 0 0"><span class="note">As informações ficam gravadas neste navegador.</span><button class="btn primary" type="submit">Salvar configurações</button></div></form>';
+};
+SUBMIT.cfg=function(form){
+  const fd=new FormData(form);CFG_FIELDS.forEach(f=>{CFG[f[0]]=String(fd.get(f[0])||'').trim()});
+  if(U.logoDraft!==undefined)CFG.logo=U.logoDraft;U.logoDraft=undefined;
+  toast(saveCfg()?'Configurações salvas neste navegador.':'Não foi possível salvar. A imagem pode ser grande demais para o armazenamento local.');render();
+};
+function renderBrand(){
+  $('#brand').innerHTML='<div class="mark">'+(CFG.logo?'<img src="'+esc(CFG.logo)+'" alt="">':esc((CFG.appName||'S').trim().charAt(0).toUpperCase()||'S'))+'</div><div><b>'+esc(CFG.appName||'Sinapse')+'</b><span>'+esc(CFG.tradeName||CFG.companyName||'Matriz Operacional')+'</span></div>';
+  try{document.title=CFG.appName||'Sinapse'}catch(e){}
+}
 /* ---------- navegação e renderização ---------- */
 const NAV=[
   ['Visão geral',[['dashboard','Painel analítico'],['produtividade','Produtividade']]],
   ['Cadastros',[['clientes','Clientes'],['colaboradores','Colaboradores'],['produtos','Produtos'],['veiculos','Veículos']]],
   ['Almoxarifado',[['entradas','Entradas e estoque']]],
-  ['Serviços',[['ordens','Ordens e orçamentos'],['requisicoes','Requisição (RM)'],['aplicacao','Aplicação de insumos'],['devolucao','Devolução de sobras']]]
+  ['Serviços',[['ordens','Ordens e orçamentos'],['requisicoes','Requisição (RM)'],['aplicacao','Aplicação de insumos'],['devolucao','Devolução de sobras']]],
+  ['Sistema',[['configuracoes','Configurações do app']]]
 ];
 function badgeFor(v){
   if(v==='ordens')return'<span class="badge">'+S.orders.filter(o=>OPEN.includes(o.status)).length+'</span>';
@@ -565,14 +599,14 @@ function badgeFor(v){
   if(v==='entradas'){const n=lowStock().length;return n?'<span class="badge alert">'+n+'</span>':''}
   return'';
 }
-function crumb(){let t='';NAV.forEach(g=>g[1].forEach(i=>{if(i[0]===U.view)t=i[1]}));return'<div class="crumb"><span>Sinapse</span><span aria-hidden="true">·</span><b>'+esc(t)+'</b><span aria-hidden="true">·</span><span>Multi-Setor</span><span aria-hidden="true">·</span><small>Projeto de : Brenda Marconato</small></div>'}
+function crumb(){let t='';NAV.forEach(g=>g[1].forEach(i=>{if(i[0]===U.view)t=i[1]}));return'<div class="crumb"><span>'+esc(CFG.appName||'Sinapse')+'</span><span aria-hidden="true">·</span><b>'+esc(t)+'</b><span aria-hidden="true">·</span><span>Multi-Setor</span><span aria-hidden="true">·</span><small>Projeto de : '+esc(CFG.developer)+'</small></div>'}
 function renderNav(){$('#nav').innerHTML=NAV.map(g=>'<div class="grp"><h3>'+g[0]+'</h3>'+g[1].map(i=>'<button class="nav" data-a="nav" data-v="'+i[0]+'"'+(U.view===i[0]?' aria-current="page"':'')+'><span>'+i[1]+'</span>'+badgeFor(i[0])+'</button>').join('')+'</div>').join('')}
 function render(){
   const a=document.activeElement;const keep=a&&a.dataset&&a.dataset.search?{id:a.id,s:a.selectionStart}:null;
-  renderNav();$('#view').innerHTML=crumb()+VIEWS[U.view]();
+  renderBrand();renderNav();$('#view').innerHTML=crumb()+VIEWS[U.view]();
   if(keep){const el=document.getElementById(keep.id);if(el){el.focus();try{el.setSelectionRange(keep.s,keep.s)}catch(e){}}}
 }
-function go(v,push){if(!VIEWS[v])v='dashboard';U.view=v;if(push!==false){try{location.hash=v}catch(e){}}render();window.scrollTo(0,0)}
+function go(v,push){if(!VIEWS[v])v='dashboard';U.view=v;U.logoDraft=undefined;if(push!==false){try{location.hash=v}catch(e){}}render();window.scrollTo(0,0)}
 
 const ACT={
   nav:t=>go(t.dataset.v),
@@ -586,6 +620,7 @@ const ACT={
     if(k==='colaboradores'&&r.custody.length)return toast('Devolva os insumos em custódia antes de excluir esta matrícula.');
     confirmModal('Excluir '+c.one+' "'+(r.name||r.plate||r.sku)+'"?',()=>{S[c.s]=S[c.s].filter(x=>x.id!==r.id);save();toast('Registro excluído.');render()})},
   custody:t=>{const c=S.collabs.find(x=>x.id===t.dataset.id);openModal('Custódia de '+c.matricola,table([{h:'Insumo',f:r=>sub(r.productName,r.sku)},{h:'Quantidade',c:'r',f:r=>num(r.quantity)+' '+esc(r.unit)},{h:'Atualizado',f:r=>fdate(r.lastUpdated)}],c.custody,'Sem itens.'))},
+  'logo-clear':()=>{U.logoDraft='';$('#logo-prev').textContent='Prévia da logo';$('#logo-clear').hidden=true},
   'ent-new':()=>openEntry(),
   'os-new':()=>openOrder(),
   'os-open':t=>openOS(t.dataset.id),
@@ -602,6 +637,12 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(t&
 document.addEventListener('input',e=>{const s=e.target.dataset&&e.target.dataset.search;if(s){U.q[s]=e.target.value;render()}});
 document.addEventListener('change',e=>{
   const t=e.target;
+  if(t.id==='f-logo'){
+    const file=t.files&&t.files[0];if(!file)return;
+    if(!file.type.startsWith('image/')){toast('Selecione um arquivo de imagem.');t.value='';return}
+    if(file.size>2*1024*1024){toast('A logo deve ter no máximo 2 MB.');t.value='';return}
+    const rd=new FileReader();rd.onload=()=>{U.logoDraft=String(rd.result||'');const box=$('#logo-prev');box.innerHTML='<img alt="Logo da empresa">';box.firstChild.src=U.logoDraft;$('#logo-clear').hidden=false};rd.readAsDataURL(file);return;
+  }
   if(t.dataset&&t.dataset.cus){const box=t.closest('form').querySelector('.items');box.innerHTML=rowHTML('cus',t.value,!!box.dataset.cond)}
   if(t.name==='pid'){const row=t.closest('.irow'),cost=row&&row.querySelector('[name=cost]');if(cost&&!cost.value){const p=prod(t.value);if(p)cost.value=p.unitCost}}
 });
