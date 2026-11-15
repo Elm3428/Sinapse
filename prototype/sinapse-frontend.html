@@ -203,12 +203,12 @@ function seed(){
     P(10,'INS-EPI-10','Óculos de proteção antirrisco e antiembaçante','EPI & Segurança','PAR',30,10,14,28,'Armário EPI · Porta 01')
   ];
   const pr=id=>products.find(x=>x.id===id);
-  const cu=(id,q)=>{const p=pr(id);return{productId:id,productName:p.name,sku:p.sku,unit:p.unit,quantity:q,lastUpdated:'2026-11-09'}};
+  const cu=(id,q,n)=>{const p=pr(id);return{productId:id,productName:p.name,sku:p.sku,unit:p.unit,quantity:q,lastUpdated:'2026-11-09',serviceOrderId:n?'os-'+n:'',serviceOrderCode:n?'OS-2026-00'+n:''}};
   const C=(n,mat,name,role,dep,ph,veh,custody)=>({id:'col-'+n,matricola:mat,name,role,department:dep,phone:ph,email:name.split(' ')[0].toLowerCase()+'@aniel.emp.br',vehicleId:veh,active:true,custody,createdAt:'2025-08-01'});
   const collabs=[
-    C(1,'MAT-1021','Carlos Eduardo Silveira','Técnico HVAC sênior','Operações de Campo','(11) 98124-5501','BRA-2A19',[cu('prod-1',5),cu('prod-5',12),cu('prod-8',2)]),
-    C(2,'MAT-1035','Roberto Mendes Ramos','Eletricista de manutenção e solar','Engenharia Elétrica','(11) 97422-9988','RIO-4D88',[cu('prod-2',25),cu('prod-6',3)]),
-    C(3,'MAT-1048','Juliana Castro de Faria','Especialista em redes e telecom','Infraestrutura de TI','(11) 99655-3312','SPK-9J22',[cu('prod-3',110),cu('prod-4',35)]),
+    C(1,'MAT-1021','Carlos Eduardo Silveira','Técnico HVAC sênior','Operações de Campo','(11) 98124-5501','BRA-2A19',[cu('prod-1',5,41),cu('prod-5',12,41),cu('prod-8',2,41)]),
+    C(2,'MAT-1035','Roberto Mendes Ramos','Eletricista de manutenção e solar','Engenharia Elétrica','(11) 97422-9988','RIO-4D88',[cu('prod-2',25,42),cu('prod-6',3,42)]),
+    C(3,'MAT-1048','Juliana Castro de Faria','Especialista em redes e telecom','Infraestrutura de TI','(11) 99655-3312','SPK-9J22',[cu('prod-3',110,43),cu('prod-4',35,43)]),
     C(4,'MAT-1062','Marcos Vinicius Lima','Mecânico de frotas','Oficina Central','(11) 98831-4490','MGX-3B45',[cu('prod-7',8),cu('prod-8',3)])
   ];
   const V=(plate,brand,model,year,km,mat,status,fuel)=>({id:'veh-'+plate,plate,brand,model,year,currentKm:km,assignedMatricola:mat,status,fuelType:fuel});
@@ -270,9 +270,17 @@ const lowStock=()=>S.products.filter(p=>p.currentStock<p.minStock);
 const custodyValue=c=>c.custody.reduce((a,i)=>{const p=prod(i.productId);return a+i.quantity*(p?p.unitCost:0)},0);
 const matLabel=c=>c.matricola+' — '+c.name;
 function mergeItems(items){const m={};items.forEach(i=>{if(m[i.productId])m[i.productId].quantity+=i.quantity;else m[i.productId]=Object.assign({},i)});return Object.values(m)}
-function addCustody(c,p,q){const e=c.custody.find(i=>i.productId===p.id);if(e){e.quantity+=q;e.lastUpdated=today()}else c.custody.push({productId:p.id,productName:p.name,sku:p.sku,unit:p.unit,quantity:q,lastUpdated:today()})}
-function subCustody(c,pid,q){const e=c.custody.find(i=>i.productId===pid);e.quantity-=q;if(e.quantity<=0.0000001)c.custody=c.custody.filter(i=>i.productId!==pid)}
-function checkCustody(c,items){for(const i of items){const e=c.custody.find(x=>x.productId===i.productId);const have=e?e.quantity:0;if(have<i.quantity)return'Custódia insuficiente de '+i.productName+': '+c.matricola+' tem '+num(have)+' '+i.unit+'.'}return null}
+/* Custódia por lote: cada linha é (produto, OS de destino). OS vazia = retirada geral, vale para qualquer OS. */
+const lotOs=i=>i.serviceOrderId||'';
+function addCustody(c,p,q,osId,osCode){const e=c.custody.find(i=>i.productId===p.id&&lotOs(i)===(osId||''));if(e){e.quantity+=q;e.lastUpdated=today()}else c.custody.push({productId:p.id,productName:p.name,sku:p.sku,unit:p.unit,quantity:q,lastUpdated:today(),serviceOrderId:osId||'',serviceOrderCode:osCode||''})}
+function lotQty(c,pid,osId){const e=c.custody.find(i=>i.productId===pid&&lotOs(i)===osId);return e?e.quantity:0}
+function subLot(c,pid,osId,q){const e=c.custody.find(i=>i.productId===pid&&lotOs(i)===osId);e.quantity-=q;if(e.quantity<=0.0000001)c.custody=c.custody.filter(i=>i!==e)}
+function availFor(c,pid,osId){return lotQty(c,pid,osId)+lotQty(c,pid,'')}
+function subFor(c,pid,osId,q){const own=Math.min(q,lotQty(c,pid,osId));if(own>0)subLot(c,pid,osId,own);const rest=q-own;if(rest>1e-9)subLot(c,pid,'',rest)}
+function checkApply(c,osId,items){for(const i of items){const have=availFor(c,i.productId,osId);if(have+1e-9<i.quantity)return'Saldo insuficiente de '+i.productName+' para esta OS: '+c.matricola+' tem '+num(have)+' '+i.unit+' disponível.'}return null}
+function checkLots(c,items){for(const i of items){const have=lotQty(c,i.productId,i.lotOs||'');if(have+1e-9<i.quantity)return'Custódia insuficiente de '+i.productName+': '+c.matricola+' tem '+num(have)+' '+i.unit+' neste lote.'}return null}
+function osForMat(c){if(!c)return[];const gen=c.custody.some(i=>lotOs(i)==='');const ids=new Set(c.custody.map(lotOs));return S.orders.filter(o=>OPEN.includes(o.status)&&(gen||ids.has(o.id)))}
+const osOpts=(lst,sel)=>lst.length?opts(lst.map(o=>({v:o.id,l:o.code+' — '+o.clientName})),sel):'<option value="">Nenhuma OS com saldo</option>';
 
 /* ---------- componentes de interface ---------- */
 function head(title,desc,actions){return'<div class="head"><div><h1>'+esc(title)+'</h1>'+(desc?'<p>'+esc(desc)+'</p>':'')+'</div><div class="acts">'+(actions||'')+'</div></div>'}
@@ -292,26 +300,35 @@ function closeModal(){$('#modal').hidden=true;U.modalFn=null;$('#mb').innerHTML=
 function confirmModal(msg,fn){U.confirmFn=fn;openModal('Confirmar','<p style="margin-top:0">'+esc(msg)+'</p><div class="dlg-f"><button class="btn" data-a="close">Cancelar</button><button class="btn primary" data-a="confirm-yes">Confirmar</button></div>')}
 
 /* linhas de itens (RM, aplicação, devolução, entrada, estimativa de OS) */
-function productOptions(kind,mat){
-  if(kind==='cus'){const c=colByMat(mat);if(!c||!c.custody.length)return null;return c.custody.map(i=>({v:i.productId,l:i.sku+' — '+i.productName+' (custódia: '+num(i.quantity)+' '+i.unit+')'}))}
+function productOptions(kind,mat,os){
+  const c=colByMat(mat);
+  if(kind==='apl'){
+    if(!c||!os)return null;
+    const ids=[...new Set(c.custody.filter(i=>lotOs(i)===os||lotOs(i)==='').map(i=>i.productId))];
+    return ids.length?ids.map(id=>{const p=prod(id);return{v:id,l:(p?p.sku+' — '+p.name:id)+' (disponível nesta OS: '+num(availFor(c,id,os))+' '+(p?p.unit:'')+')'}}):null;
+  }
+  if(kind==='ret'){
+    if(!c||!c.custody.length)return null;
+    return c.custody.map(i=>{const code=i.serviceOrderCode||(orderById(lotOs(i))||{}).code;return{v:i.productId+'|'+lotOs(i),l:i.sku+' — '+i.productName+' · '+(code||'Geral')+' (custódia: '+num(i.quantity)+' '+i.unit+')'}});
+  }
   if(kind==='rm')return S.products.map(p=>({v:p.id,l:p.sku+' — '+p.name+' (saldo: '+num(p.currentStock)+' '+p.unit+')'}));
   return S.products.map(p=>({v:p.id,l:p.sku+' — '+p.name}));
 }
-function rowHTML(kind,mat,withCond){
-  const o=productOptions(kind,mat);
-  if(o===null)return'<div class="note">Esta matrícula não tem insumos em custódia. Registre uma RM primeiro.</div>';
+function rowHTML(kind,mat,withCond,os){
+  const o=productOptions(kind,mat,os);
+  if(o===null)return'<div class="note">'+(kind==='apl'?(os?'Esta matrícula não tem insumos disponíveis para esta OS.':'Esta matrícula não tem saldo em nenhuma OS aberta. Registre uma RM primeiro.'):'Esta matrícula não tem insumos em custódia. Registre uma RM primeiro.')+'</div>';
   if(!o.length)return'<div class="note">Cadastre produtos para montar a lista.</div>';
   const sel='<select name="pid" aria-label="Produto">'+opts(o)+'</select>';
   const qty='<input type="number" name="qty" min="0.01" step="any" value="1" aria-label="Quantidade">';
   const x='<button type="button" class="x" data-a="row-del" aria-label="Remover item">×</button>';
   if(kind==='ent')return'<div class="irow n4">'+sel+qty+'<input type="number" name="cost" min="0" step="any" placeholder="Custo unit." aria-label="Custo unitário">'+x+'</div>';
-  if(kind==='cus'&&withCond)return'<div class="irow">'+sel+qty+'<select name="cond" aria-label="Condição"><option value="perfeito">Perfeito</option><option value="revisao">Revisão</option><option value="avariado">Avariado</option></select>'+x+'</div>';
+  if(kind==='ret')return'<div class="irow">'+sel+qty+'<select name="cond" aria-label="Condição"><option value="perfeito">Perfeito</option><option value="revisao">Revisão</option><option value="avariado">Avariado</option></select>'+x+'</div>';
   return'<div class="irow n3">'+sel+qty+x+'</div>';
 }
-function itemsBox(kind,mat,withCond){return'<div class="items" data-kind="'+kind+'"'+(withCond?' data-cond="1"':'')+'>'+rowHTML(kind,mat,withCond)+'</div><button type="button" class="btn sm ghost" data-a="row-add">+ Adicionar item</button>'}
+function itemsBox(kind,mat,withCond,os){return'<div class="items" data-kind="'+kind+'"'+(withCond?' data-cond="1"':'')+'>'+rowHTML(kind,mat,withCond,os)+'</div><button type="button" class="btn sm ghost" data-a="row-add">+ Adicionar item</button>'}
 function readItems(form){
   const fd=new FormData(form);const pids=fd.getAll('pid'),q=fd.getAll('qty'),cost=fd.getAll('cost'),cond=fd.getAll('cond');const out=[];
-  pids.forEach((id,i)=>{const p=prod(id);const n=parseFloat(q[i]);if(p&&n>0)out.push({productId:id,productName:p.name,sku:p.sku,unit:p.unit,quantity:n,unitCost:cost[i]!==undefined&&cost[i]!==''?parseFloat(cost[i]):p.unitCost,condition:cond[i]})});
+  pids.forEach((raw,i)=>{const parts=String(raw).split('|');const id=parts[0];const p=prod(id);const n=parseFloat(q[i]);if(p&&n>0)out.push({lotOs:parts[1]||'',productId:id,productName:p.name,sku:p.sku,unit:p.unit,quantity:n,unitCost:cost[i]!==undefined&&cost[i]!==''?parseFloat(cost[i]):p.unitCost,condition:cond[i]})});
   return out;
 }
 
@@ -500,23 +517,30 @@ VIEWS.requisicoes=function(){
     fld('Almoxarife','','<input id="f-by" name="by" type="text" value="Almoxarife de plantão">','s2')+
     fld('Situação','','<select id="f-st" name="st"><option value="retirado">Retirar agora</option><option value="pendente">Registrar como pendente</option></select>','s2')+'</div>'+
     '<h3 style="margin:16px 0 4px;font-size:14px">Itens</h3>'+itemsBox('rm',mat0)+
-    flowNote('Pendente reserva o pedido sem mexer no saldo. A baixa acontece quando você confirmar na lista abaixo.')+
+    flowNote('Com OS vinculada, o insumo só poderá ser aplicado nessa OS. Sem OS, fica como retirada geral e vale para qualquer OS. Pendente reserva o pedido sem mexer no saldo; a baixa acontece quando você confirmar na lista abaixo.')+
     '<div class="dlg-f"><button class="btn primary" type="submit">Registrar RM</button></div></form>'+
   toolbar('requisicoes')+'<section class="panel"><h2>Histórico de RM</h2>'+table([{h:'RM',f:r=>sub(r.rmNumber,fdate(r.date))},{h:'Técnico',f:r=>sub(r.technicianName,r.matricola)},{h:'OS',f:r=>esc(r.serviceOrderCode||'—')},{h:'Itens',f:r=>r.items.map(i=>'<div>'+num(i.quantity)+' '+esc(i.unit)+' · <span class="sub">'+esc(i.productName)+'</span></div>').join('')},{h:'Situação',f:r=>r.status==='retirado'?pill('Retirado','ok'):pill('Pendente','warn')},{h:'',c:'r',f:r=>r.status==='pendente'?'<button class="btn sm primary" data-a="rm-confirm" data-id="'+r.id+'">Dar baixa</button>':''}],rows,'Nenhuma RM registrada.')+'</section>';
 };
 function dispenseRM(rm){
   for(const i of rm.items){const p=prod(i.productId);if(!p||p.currentStock<i.quantity)return'Saldo insuficiente de '+i.productName+': disponível '+num(p?p.currentStock:0)+' '+i.unit+'.'}
-  const c=colByMat(rm.matricola);rm.items.forEach(i=>{const p=prod(i.productId);p.currentStock-=i.quantity;addCustody(c,p,i.quantity)});return null;
+  const c=colByMat(rm.matricola);rm.items.forEach(i=>{const p=prod(i.productId);p.currentStock-=i.quantity;addCustody(c,p,i.quantity,rm.serviceOrderId,rm.serviceOrderCode)});return null;
 }
 VIEWS.aplicacao=function(){
-  const mat0=(S.collabs.find(c=>c.active&&c.custody.length)||S.collabs.find(c=>c.active)||{}).matricola;
+  const pre=U.pre.os?orderById(U.pre.os):null;
+  const act=S.collabs.filter(c=>c.active);
+  const has=(c,o)=>osForMat(c).some(x=>x.id===o.id);
+  const c0=(pre&&(act.find(c=>c.matricola===pre.assignedMatricola&&has(c,pre))||act.find(c=>has(c,pre))))||act.find(c=>osForMat(c).length)||act[0];
+  const lst=osForMat(c0);
+  const os0=((pre&&lst.find(o=>o.id===pre.id))||lst[0]||{}).id||'';
+  const mat0=c0&&c0.matricola;
   const rows=filt('aplicacao',S.apps).slice().sort((a,b)=>b.appCode.localeCompare(a.appCode));
   return head('Aplicação de insumos','Baixa na matrícula do técnico e lançamento na ordem de serviço.')+
   '<form class="panel" data-form="app"><h2>Nova aplicação</h2><div class="form-grid">'+
-    fld('Matrícula *','','<select id="f-mat" name="mat" data-cus="1">'+opts(activeMats(),mat0)+'</select>','s2')+
-    fld('Ordem de serviço *','','<select id="f-os" name="os">'+opts(openOrders(),U.pre.os||'','Selecione a OS')+'</select>','s2')+
+    fld('Matrícula *','','<select id="f-mat" name="mat" data-cus="apl">'+opts(activeMats(),mat0)+'</select>','s2')+
+    fld('Ordem de serviço *','','<select id="f-os" name="os" data-ossel="1">'+osOpts(lst,os0)+'</select>','s2')+
     fld('Observações','','<input id="f-obs" name="obs" type="text">','s4')+'</div>'+
-    '<h3 style="margin:16px 0 4px;font-size:14px">Itens aplicados</h3>'+itemsBox('cus',mat0)+
+    '<p class="note">Só aparecem as OS em que a matrícula tem saldo. Insumo retirado para uma OS só pode ser aplicado nela; o retirado sem OS vinculada vale para qualquer OS.</p>'+
+    '<h3 style="margin:16px 0 4px;font-size:14px">Itens aplicados</h3>'+itemsBox('apl',mat0,false,os0)+
     '<div class="dlg-f"><button class="btn primary" type="submit">Lançar aplicação</button></div></form>'+
   toolbar('aplicacao')+'<section class="panel"><h2>Histórico de aplicações</h2>'+table([{h:'Código',f:r=>sub(r.appCode,fdate(r.date))},{h:'Técnico',f:r=>sub(r.technicianName,r.matricola)},{h:'OS',f:r=>sub(r.serviceOrderCode,r.clientName)},{h:'Itens',f:r=>r.items.map(i=>'<div>'+num(i.quantity)+' '+esc(i.unit)+' · <span class="sub">'+esc(i.productName)+'</span></div>').join('')}],rows,'Nenhuma aplicação registrada.')+'</section>';
 };
@@ -524,12 +548,12 @@ VIEWS.devolucao=function(){
   const mat0=(S.collabs.find(c=>c.active&&c.custody.length)||S.collabs.find(c=>c.active)||{}).matricola;
   const rows=filt('devolucao',S.rets).slice().sort((a,b)=>b.returnCode.localeCompare(a.returnCode));
   const cd={perfeito:pill('Perfeito','ok'),revisao:pill('Revisão','warn'),avariado:pill('Avariado','bad')};
-  return head('Devolução de sobras','Itens perfeitos voltam ao saldo do almoxarifado. Revisão e avariados saem da custódia sem voltar ao estoque.')+
+  return head('Devolução de sobras','Cada item sai do lote da OS de origem. Perfeitos voltam ao saldo do almoxarifado; revisão e avariados saem da custódia sem voltar ao estoque.')+
   '<form class="panel" data-form="ret"><h2>Nova devolução</h2><div class="form-grid">'+
-    fld('Matrícula *','','<select id="f-mat" name="mat" data-cus="1">'+opts(activeMats(),mat0)+'</select>','s2')+
-    fld('Ordem de serviço','','<select id="f-os" name="os">'+opts(S.orders.map(o=>({v:o.id,l:o.code+' — '+o.clientName})),'','Sem OS vinculada')+'</select>','s2')+
-    fld('Recebido por','','<input id="f-by" name="by" type="text" value="Almoxarife de plantão">','s2')+fld('Observações','','<input id="f-obs" name="obs" type="text">','s2')+'</div>'+
-    '<h3 style="margin:16px 0 4px;font-size:14px">Itens devolvidos</h3>'+itemsBox('cus',mat0,true)+
+    fld('Matrícula *','','<select id="f-mat" name="mat" data-cus="ret">'+opts(activeMats(),mat0)+'</select>','s2')+
+    fld('Recebido por','','<input id="f-by" name="by" type="text" value="Almoxarife de plantão">','s2')+
+    fld('Observações','','<input id="f-obs" name="obs" type="text">','s4')+'</div>'+
+    '<h3 style="margin:16px 0 4px;font-size:14px">Itens devolvidos</h3>'+itemsBox('ret',mat0,true)+
     '<div class="dlg-f"><button class="btn primary" type="submit">Registrar devolução</button></div></form>'+
   toolbar('devolucao')+'<section class="panel"><h2>Histórico de devoluções</h2>'+table([{h:'Código',f:r=>sub(r.returnCode,fdate(r.date))},{h:'Técnico',f:r=>sub(r.technicianName,r.matricola)},{h:'OS',f:r=>esc(r.serviceOrderCode||'—')},{h:'Itens',f:r=>r.items.map(i=>'<div>'+num(i.quantity)+' '+esc(i.unit)+' · <span class="sub">'+esc(i.productName)+'</span> '+cd[i.condition]+'</div>').join('')},{h:'Recebido por',f:r=>esc(r.receivedBy)}],rows,'Nenhuma devolução registrada.')+'</section>';
 };
@@ -545,20 +569,28 @@ const SUBMIT={
   },
   app(form){
     const fd=new FormData(form);const c=colByMat(fd.get('mat'));const o=orderById(fd.get('os'));const items=mergeItems(readItems(form)).map(i=>({productId:i.productId,productName:i.productName,sku:i.sku,unit:i.unit,quantity:i.quantity}));
-    if(!o)return toast('Selecione a ordem de serviço.');if(!c||!items.length)return toast('Adicione ao menos um item da custódia.');
-    const err=checkCustody(c,items);if(err)return toast(err);
-    items.forEach(i=>{subCustody(c,i.productId,i.quantity);const p=prod(i.productId);o.appliedSupplies.push({id:uid('ap'),productId:i.productId,productName:i.productName,sku:i.sku,unit:i.unit,quantity:i.quantity,appliedDate:today(),matricola:c.matricola,technicianName:c.name,unitCost:p.unitCost,unitPrice:p.unitPrice,notes:fd.get('obs')||undefined})});
+    if(!c)return toast('Selecione uma matrícula.');
+    if(!o)return toast('Selecione a ordem de serviço.');
+    if(!OPEN.includes(o.status))return toast('Esta OS não está aberta para receber insumos.');
+    if(!osForMat(c).some(x=>x.id===o.id))return toast('A matrícula '+c.matricola+' não tem saldo para '+o.code+'. Registre uma RM vinculada a esta OS.');
+    if(!items.length)return toast('Adicione ao menos um item.');
+    const err=checkApply(c,o.id,items);if(err)return toast(err);
+    items.forEach(i=>{subFor(c,i.productId,o.id,i.quantity);const p=prod(i.productId);o.appliedSupplies.push({id:uid('ap'),productId:i.productId,productName:i.productName,sku:i.sku,unit:i.unit,quantity:i.quantity,appliedDate:today(),matricola:c.matricola,technicianName:c.name,unitCost:p.unitCost,unitPrice:p.unitPrice,notes:fd.get('obs')||undefined})});
     if(o.status==='aprovado')o.status='em_execucao';Object.assign(o,osTotals(o));
     S.apps.push({id:uid('app'),appCode:nextCode('APL',S.apps,'appCode',3),date:today(),matricola:c.matricola,technicianName:c.name,serviceOrderId:o.id,serviceOrderCode:o.code,clientName:o.clientName,items,notes:fd.get('obs')||undefined});
     U.pre={};save();toast('Aplicação lançada em '+o.code+'.');render();
   },
   ret(form){
-    const fd=new FormData(form);const c=colByMat(fd.get('mat'));const raw=readItems(form);const o=orderById(fd.get('os'));
+    const fd=new FormData(form);const c=colByMat(fd.get('mat'));const raw=readItems(form);
     if(!c||!raw.length)return toast('Adicione ao menos um item da custódia.');
-    const items=raw.map(i=>({productId:i.productId,productName:i.productName,sku:i.sku,unit:i.unit,quantity:i.quantity,condition:i.condition||'perfeito'}));
-    const err=checkCustody(c,mergeItems(items));if(err)return toast(err);
-    items.forEach(i=>{subCustody(c,i.productId,i.quantity);if(i.condition==='perfeito')prod(i.productId).currentStock+=i.quantity});
-    S.rets.push({id:uid('ret'),returnCode:nextCode('DEV',S.rets,'returnCode',3),date:today(),matricola:c.matricola,technicianName:c.name,serviceOrderId:o?o.id:undefined,serviceOrderCode:o?o.code:undefined,items,receivedBy:fd.get('by')||'Almoxarife',notes:fd.get('obs')||undefined});
+    const lots={};raw.forEach(i=>{const k=i.productId+'|'+i.lotOs;if(lots[k]){lots[k].quantity+=i.quantity;if(i.condition!=='perfeito')lots[k].condition=i.condition}else lots[k]=Object.assign({},i)});
+    const merged=Object.values(lots);
+    const err=checkLots(c,merged);if(err)return toast(err);
+    const codes=[];
+    const items=merged.map(i=>{const lot=c.custody.find(x=>x.productId===i.productId&&lotOs(x)===i.lotOs);const code=(lot&&lot.serviceOrderCode)||(orderById(i.lotOs)||{}).code||'';if(code&&!codes.includes(code))codes.push(code);return{productId:i.productId,productName:i.productName,sku:i.sku,unit:i.unit,quantity:i.quantity,condition:i.condition||'perfeito',serviceOrderId:i.lotOs,serviceOrderCode:code}});
+    items.forEach(i=>{subLot(c,i.productId,i.serviceOrderId,i.quantity);if(i.condition==='perfeito')prod(i.productId).currentStock+=i.quantity});
+    const ids=[...new Set(items.map(i=>i.serviceOrderId).filter(Boolean))];
+    S.rets.push({id:uid('ret'),returnCode:nextCode('DEV',S.rets,'returnCode',3),date:today(),matricola:c.matricola,technicianName:c.name,serviceOrderId:ids.length===1?ids[0]:undefined,serviceOrderCode:codes.join(', ')||undefined,items,receivedBy:fd.get('by')||'Almoxarife',notes:fd.get('obs')||undefined});
     save();toast('Devolução registrada.');render();
   }
 };
@@ -619,7 +651,7 @@ const ACT={
   'cad-del':t=>{const k=t.dataset.k,c=CAD[k],r=S[c.s].find(x=>x.id===t.dataset.id);if(!r)return;
     if(k==='colaboradores'&&r.custody.length)return toast('Devolva os insumos em custódia antes de excluir esta matrícula.');
     confirmModal('Excluir '+c.one+' "'+(r.name||r.plate||r.sku)+'"?',()=>{S[c.s]=S[c.s].filter(x=>x.id!==r.id);save();toast('Registro excluído.');render()})},
-  custody:t=>{const c=S.collabs.find(x=>x.id===t.dataset.id);openModal('Custódia de '+c.matricola,table([{h:'Insumo',f:r=>sub(r.productName,r.sku)},{h:'Quantidade',c:'r',f:r=>num(r.quantity)+' '+esc(r.unit)},{h:'Atualizado',f:r=>fdate(r.lastUpdated)}],c.custody,'Sem itens.'))},
+  custody:t=>{const c=S.collabs.find(x=>x.id===t.dataset.id);openModal('Custódia de '+c.matricola,table([{h:'Insumo',f:r=>sub(r.productName,r.sku)},{h:'Quantidade',c:'r',f:r=>num(r.quantity)+' '+esc(r.unit)},{h:'Destino',f:r=>r.serviceOrderCode?esc(r.serviceOrderCode):'<span class="sub">Geral (qualquer OS)</span>'},{h:'Atualizado',f:r=>fdate(r.lastUpdated)}],c.custody,'Sem itens.'))},
   'logo-clear':()=>{U.logoDraft='';$('#logo-prev').textContent='Prévia da logo';$('#logo-clear').hidden=true},
   'ent-new':()=>openEntry(),
   'os-new':()=>openOrder(),
@@ -630,8 +662,8 @@ const ACT={
     try{navigator.clipboard.writeText(txt).then(()=>toast('Resumo copiado.'),()=>toast('O navegador bloqueou a cópia.'))}catch(e){toast('O navegador bloqueou a cópia.')}},
   'go-flow':t=>{U.pre={os:t.dataset.id};closeModal();go(t.dataset.v)},
   'rm-confirm':t=>{const rm=S.rms.find(r=>r.id===t.dataset.id);const err=dispenseRM(rm);if(err)return toast(err);rm.status='retirado';rm.date=today();save();toast(rm.rmNumber+' retirada.');render()},
-  'row-add':t=>{const form=t.closest('form');const box=t.parentElement.querySelector('.items');const kind=box.dataset.kind;const m=form.querySelector('[name=mat]');if(box.querySelector('.note'))box.innerHTML='';box.insertAdjacentHTML('beforeend',rowHTML(kind,m&&m.value,!!box.dataset.cond))},
-  'row-del':t=>{const box=t.closest('.items');t.closest('.irow').remove();if(!box.children.length){const f=box.closest('form'),m=f.querySelector('[name=mat]');box.innerHTML=rowHTML(box.dataset.kind,m&&m.value,!!box.dataset.cond)}}
+  'row-add':t=>{const form=t.closest('form');const box=t.parentElement.querySelector('.items');const kind=box.dataset.kind;const m=form.querySelector('[name=mat]');if(box.querySelector('.note'))box.innerHTML='';const so=form.querySelector('[name=os]');box.insertAdjacentHTML('beforeend',rowHTML(kind,m&&m.value,!!box.dataset.cond,so&&so.value))},
+  'row-del':t=>{const box=t.closest('.items');t.closest('.irow').remove();if(!box.children.length){const f=box.closest('form'),m=f.querySelector('[name=mat]'),so=f.querySelector('[name=os]');box.innerHTML=rowHTML(box.dataset.kind,m&&m.value,!!box.dataset.cond,so&&so.value)}}
 };
 document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(t&&ACT[t.dataset.a]){e.preventDefault();ACT[t.dataset.a](t)}else if(e.target.id==='modal')closeModal()});
 document.addEventListener('input',e=>{const s=e.target.dataset&&e.target.dataset.search;if(s){U.q[s]=e.target.value;render()}});
@@ -643,7 +675,12 @@ document.addEventListener('change',e=>{
     if(file.size>2*1024*1024){toast('A logo deve ter no máximo 2 MB.');t.value='';return}
     const rd=new FileReader();rd.onload=()=>{U.logoDraft=String(rd.result||'');const box=$('#logo-prev');box.innerHTML='<img alt="Logo da empresa">';box.firstChild.src=U.logoDraft;$('#logo-clear').hidden=false};rd.readAsDataURL(file);return;
   }
-  if(t.dataset&&t.dataset.cus){const box=t.closest('form').querySelector('.items');box.innerHTML=rowHTML('cus',t.value,!!box.dataset.cond)}
+  if(t.dataset&&t.dataset.cus){
+    const form=t.closest('form'),box=form.querySelector('.items');
+    if(t.dataset.cus==='apl'){const lst=osForMat(colByMat(t.value)),os=form.querySelector('[name=os]'),prev=os.value;os.innerHTML=osOpts(lst,lst.some(o=>o.id===prev)?prev:'');box.innerHTML=rowHTML('apl',t.value,false,os.value)}
+    else box.innerHTML=rowHTML('ret',t.value,true);
+  }
+  if(t.dataset&&t.dataset.ossel){const form=t.closest('form'),box=form.querySelector('.items'),m=form.querySelector('[name=mat]');box.innerHTML=rowHTML('apl',m.value,false,t.value)}
   if(t.name==='pid'){const row=t.closest('.irow'),cost=row&&row.querySelector('[name=cost]');if(cost&&!cost.value){const p=prod(t.value);if(p)cost.value=p.unitCost}}
 });
 document.addEventListener('submit',e=>{
