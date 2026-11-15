@@ -32,7 +32,8 @@ export type ActiveSection =
   | 'servicos_aplicacao'
   | 'servicos_devolucao'
   | 'relatorios_produtividade'
-  | 'supabase_panel';
+  | 'supabase_panel'
+  | 'app_settings';
 
 interface SidebarProps {
   activeSection: ActiveSection;
@@ -288,6 +289,18 @@ export function Sidebar({
               </div>
             </button>
           </div>
+        </div>
+
+        {/* CONFIGURAÇÕES DO APLICATIVO */}
+        <div>
+          <div className="px-3 mb-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Sistema</div>
+          <button
+            onClick={() => setActiveSection('app_settings')}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${activeSection === 'app_settings' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Configurações do App</span>
+          </button>
         </div>
 
         {/* GRUPO 5: INTEGRAÇÃO SUPABASE */}
