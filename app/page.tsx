@@ -521,7 +521,7 @@ export default function HomePage() {
                       <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Esquema SQL Oficial Pronto para o Supabase
                       </div>
-                      <pre className="p-4 bg-slate-900 text-slate-100 rounded-lg font-mono text-[11px] max-h-96 overflow-y-auto leading-relaxed">
+                      <pre className="p-4 bg-black text-slate-800 border border-slate-200 rounded-lg font-mono text-[11px] max-h-96 overflow-y-auto leading-relaxed">
                         {StorageService.generateSupabaseSQL()}
                       </pre>
                     </div>

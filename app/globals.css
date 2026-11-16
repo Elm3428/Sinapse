@@ -1,6 +1,199 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Tema NVIDIA (preto, cinza-escuro e verde #76B900)
+ * -------------------------------------------------
+ * As telas usam classes Tailwind de paleta clara (slate/indigo/emerald...).
+ * Em vez de reescrever centenas de classes, a paleta é redefinida aqui só para TELA:
+ *  - escala "slate" invertida: 50-100 = fundos escuros, 700-900 = textos claros;
+ *  - "white" vira a cor de superfície dos cards;
+ *  - indigo = verde NVIDIA (cor principal), blue = cinza-aço (neutro),
+ *    emerald = verde-claro de sucesso, amber/rose/red = alertas em tons escuros.
+ * Na IMPRESSÃO (@media print) a paleta original clara continua valendo (OS impressa).
+ */
+@media screen {
+  :root {
+    color-scheme: dark;
+
+    --nv-green: #76b900;
+    --nv-green-hover: #8fd11a;
+
+    /* superfícies e neutros */
+    --color-white: #161616;
+    --color-slate-50: #0b0b0b;
+    --color-slate-100: #1d1d1d;
+    --color-slate-200: #2c2c2c;
+    --color-slate-300: #3d3d3d;
+    --color-slate-400: #8c8c8c;
+    --color-slate-500: #a3a3a3;
+    --color-slate-600: #b8b8b8;
+    --color-slate-700: #cfcfcf;
+    --color-slate-800: #e2e2e2;
+    --color-slate-900: #f4f4f4;
+    --color-slate-950: #000000;
+
+    /* destaque principal: verde NVIDIA */
+    --color-indigo-50: #121b05;
+    --color-indigo-100: #1a2807;
+    --color-indigo-200: #2f4a09;
+    --color-indigo-300: #4c7a00;
+    --color-indigo-400: #62a000;
+    --color-indigo-500: #76b900;
+    --color-indigo-600: #76b900;
+    --color-indigo-700: #8fd11a;
+    --color-indigo-800: #a6df43;
+    --color-indigo-900: #c3ec7f;
+    --color-indigo-950: #d8f5a6;
+
+    /* informativo: cinza-aço, para não pesar no verde */
+    --color-blue-50: #15191d;
+    --color-blue-100: #1c2228;
+    --color-blue-200: #2f3a44;
+    --color-blue-500: #7f93a6;
+    --color-blue-600: #93a5b6;
+    --color-blue-700: #a9b8c6;
+    --color-blue-800: #bfcad5;
+    --color-blue-900: #d4dce4;
+    --color-blue-950: #e6ebf0;
+
+    /* sucesso: verde-claro mais suave que o destaque */
+    --color-emerald-50: #111a0c;
+    --color-emerald-100: #182612;
+    --color-emerald-200: #2b4422;
+    --color-emerald-300: #4a7a3a;
+    --color-emerald-400: #7cc25f;
+    --color-emerald-500: #8ccf6b;
+    --color-emerald-600: #8ccf6b;
+    --color-emerald-700: #9bd97d;
+    --color-emerald-800: #b3e49b;
+    --color-emerald-900: #cdeebb;
+    --color-emerald-950: #def4d2;
+
+    /* atenção */
+    --color-amber-50: #1f1805;
+    --color-amber-100: #2b200a;
+    --color-amber-200: #4d3a0d;
+    --color-amber-600: #e5a50a;
+    --color-amber-700: #f0b429;
+    --color-amber-800: #f5c85c;
+    --color-amber-900: #f9dc93;
+
+    /* erro / exclusão */
+    --color-rose-50: #230d10;
+    --color-rose-200: #5a1d25;
+    --color-rose-600: #f0616d;
+    --color-rose-700: #f47f89;
+    --color-rose-800: #f8a3aa;
+    --color-red-600: #f0616d;
+    --color-red-700: #f47f89;
+
+    /* tons residuais (gradiente de cabeçalho) */
+    --color-teal-50: #0f1a17;
+    --color-teal-800: #9fd9cb;
+    --color-purple-50: #141a0c;
+  }
+
+  /* botões primários (antes slate-900 sólido) viram verde NVIDIA com texto escuro */
+  .bg-slate-900 {
+    background-color: var(--nv-green);
+    color: #0b0b0b;
+  }
+  .hover\:bg-slate-800:hover {
+    background-color: var(--nv-green-hover);
+  }
+
+  /* foco dos campos em verde */
+  .focus\:ring-slate-900:focus {
+    --tw-ring-color: var(--nv-green);
+  }
+  .border-slate-900,
+  .focus\:border-slate-900:focus {
+    border-color: var(--nv-green);
+  }
+
+  /* fundos de modais (overlays) continuam escuros, não claros */
+  .bg-slate-900\/50,
+  .bg-slate-900\/60 {
+    background-color: rgb(0 0 0 / 0.72);
+  }
+
+  /* Folha de impressão da OS: mantém aparência de papel (clara) também na tela */
+  .paper {
+    --color-white: #ffffff;
+    --color-slate-50: #f8fafc;
+    --color-slate-100: #f1f5f9;
+    --color-slate-200: #e2e8f0;
+    --color-slate-300: #cbd5e1;
+    --color-slate-400: #94a3b8;
+    --color-slate-500: #64748b;
+    --color-slate-600: #475569;
+    --color-slate-700: #334155;
+    --color-slate-800: #1e293b;
+    --color-slate-900: #0f172a;
+    --color-emerald-50: #ecfdf5;
+    --color-emerald-200: #a7f3d0;
+    --color-emerald-700: #047857;
+    --color-amber-50: #fffbeb;
+    --color-amber-100: #fef3c7;
+    --color-amber-700: #b45309;
+    --color-rose-600: #e11d48;
+    background-color: #ffffff;
+    color: #0f172a;
+  }
+  .paper .border-slate-900 {
+    border-color: #0f172a;
+  }
+  .paper .bg-slate-900 {
+    background-color: #0f172a;
+    color: #ffffff;
+  }
+  .paper input,
+  .paper select,
+  .paper textarea {
+    background-color: #ffffff;
+    color: #0f172a;
+  }
+
+  /* campos nativos no tema escuro */
+  input,
+  select,
+  textarea {
+    background-color: #101010;
+    color: #f4f4f4;
+    color-scheme: dark;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #6f6f6f;
+  }
+  option {
+    background-color: #161616;
+    color: #f4f4f4;
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--nv-green);
+  }
+  ::selection {
+    background: rgb(118 185 0 / 0.35);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0b0b0b;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #3d3d3d;
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4f4f4f;
+  }
+}
+
 @layer base {
   body {
     @apply antialiased bg-slate-50 text-slate-900;

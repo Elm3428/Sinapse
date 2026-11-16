@@ -84,7 +84,7 @@ export function Sidebar({
               onClick={() => setActiveSection('dashboard')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'dashboard'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -98,7 +98,7 @@ export function Sidebar({
               onClick={() => setActiveSection('relatorios_produtividade')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'relatorios_produtividade'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -120,7 +120,7 @@ export function Sidebar({
               onClick={() => setActiveSection('cadastros_clientes')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'cadastros_clientes'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -134,7 +134,7 @@ export function Sidebar({
               onClick={() => setActiveSection('cadastros_colaboradores')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'cadastros_colaboradores'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -153,7 +153,7 @@ export function Sidebar({
               onClick={() => setActiveSection('cadastros_produtos')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'cadastros_produtos'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -172,7 +172,7 @@ export function Sidebar({
               onClick={() => setActiveSection('cadastros_veiculos')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'cadastros_veiculos'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -194,7 +194,7 @@ export function Sidebar({
               onClick={() => setActiveSection('almoxarifado_entradas')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'almoxarifado_entradas'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -217,7 +217,7 @@ export function Sidebar({
               onClick={() => setActiveSection('servicos_orcamentos')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'servicos_orcamentos'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
@@ -237,7 +237,7 @@ export function Sidebar({
               onClick={() => setActiveSection('servicos_requisicao_rm')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'servicos_requisicao_rm'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
               title="Sai do Almoxarifado e entra na matrícula do colaborador"
@@ -256,7 +256,7 @@ export function Sidebar({
               onClick={() => setActiveSection('servicos_aplicacao')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'servicos_aplicacao'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
               title="Sai da matrícula do colaborador e aplica no Serviço"
@@ -275,7 +275,7 @@ export function Sidebar({
               onClick={() => setActiveSection('servicos_devolucao')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'servicos_devolucao'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
               title="Devolve a sobra de volta ao Almoxarifado"
@@ -296,7 +296,7 @@ export function Sidebar({
           <div className="px-3 mb-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Sistema</div>
           <button
             onClick={() => setActiveSection('app_settings')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${activeSection === 'app_settings' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${activeSection === 'app_settings' ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}`}
           >
             <ShieldCheck className="w-4 h-4" />
             <span>Configurações do App</span>
@@ -313,7 +313,7 @@ export function Sidebar({
               onClick={() => setActiveSection('supabase_panel')}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
                 activeSection === 'supabase_panel'
-                  ? 'bg-slate-900 text-white shadow-xs'
+                  ? 'bg-slate-100 text-slate-900 shadow-[inset_3px_0_0_#76B900] shadow-xs'
                   : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >

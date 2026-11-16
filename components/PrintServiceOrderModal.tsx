@@ -17,9 +17,9 @@ export function PrintServiceOrderModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-300 w-full max-w-3xl overflow-hidden my-6">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-300 w-full max-w-3xl overflow-hidden my-6 paper-frame">
         {/* Top Control Bar (Hidden when printing) */}
-        <div className="no-print flex items-center justify-between px-6 py-3.5 bg-slate-900 text-white">
+        <div className="no-print flex items-center justify-between px-6 py-3.5 bg-black text-white">
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm">Visualização de Impressão Oficial</span>
             <span className="font-mono text-xs text-slate-300">({order.code})</span>
@@ -43,7 +43,7 @@ export function PrintServiceOrderModal({
         </div>
 
         {/* Official Printable Sheet (A4 styled layout) */}
-        <div className="p-8 text-slate-900 font-sans space-y-6 text-xs bg-white">
+        <div className="paper p-8 text-slate-900 font-sans space-y-6 text-xs bg-white">
           {/* Header da Empresa */}
           <div className="flex items-start justify-between pb-4 border-b-2 border-slate-900">
             <div>
