@@ -54,9 +54,9 @@
 .border-emerald-200 { border-color: #496B20 !important; }
 
 /* Estados de interação */
-.hover\\:bg-slate-100:hover { background-color: var(--aniel-surface-raised) !important; }
-.hover\\:bg-slate-800:hover { background-color: #5F9400 !important; }
-.focus\\:ring-slate-900:focus { --tw-ring-color: var(--aniel-green) !important; }
+.hover\:bg-slate-100:hover { background-color: var(--aniel-surface-raised) !important; }
+.hover\:bg-slate-800:hover { background-color: #5F9400 !important; }
+.focus\:ring-slate-900:focus { --tw-ring-color: var(--aniel-green) !important; }
 
 /* Mantém documentos impressos claros e legíveis */
 @media print {
