@@ -115,6 +115,12 @@ export interface ServiceSupplyApplied {
   technicianName: string;
   unitCost: number;
   notes?: string;
+  // Rastreabilidade: de qual RM/aplicação veio este consumo
+  rmId?: string;
+  rmNumber?: string;
+  rmItemId?: string;
+  applicationId?: string;
+  applicationCode?: string;
 }
 
 export type ServiceOrderStatus = 
@@ -154,8 +160,17 @@ export interface RequisitionItem {
   productName: string;
   sku: string;
   unit: string;
-  quantity: number;
+  quantity: number; // quantidade requisitada
+  // Controle por item (preenchido pelo StorageService em RMs novas).
+  // RMs antigas não têm estes campos e seguem como "controle legado".
+  itemId?: string; // identificador do item dentro da RM
+  appliedQuantity?: number; // já aplicado em Ordens de Serviço
+  returnedQuantity?: number; // já devolvido ao Almoxarifado
+  // saldo restante = quantity - appliedQuantity - returnedQuantity
 }
+
+// Origem de um material em custódia: item de uma RM ou saldo anterior ao controle por RM
+export type SupplyOrigin = 'rm' | 'legado';
 
 export interface SupplyRequisitionRM {
   id: string;
@@ -177,6 +192,11 @@ export interface ApplicationItem {
   sku: string;
   unit: string;
   quantity: number;
+  // Vínculo com a origem do material (obrigatório em aplicações novas)
+  origin?: SupplyOrigin; // 'rm' (padrão) ou 'legado' (saldo anterior ao controle por RM)
+  rmId?: string;
+  rmNumber?: string;
+  rmItemId?: string;
 }
 
 export interface SupplyApplicationRecord {
@@ -189,6 +209,7 @@ export interface SupplyApplicationRecord {
   serviceOrderCode: string;
   clientName: string;
   items: ApplicationItem[];
+  responsibleName?: string; // quem lançou a aplicação (padrão: o próprio técnico)
   notes?: string;
 }
 
@@ -199,6 +220,11 @@ export interface ReturnItem {
   unit: string;
   quantity: number;
   condition: 'perfeito' | 'revisao' | 'avariado';
+  // Vínculo com a origem do material (obrigatório em devoluções novas)
+  origin?: SupplyOrigin;
+  rmId?: string;
+  rmNumber?: string;
+  rmItemId?: string;
 }
 
 export interface SupplyReturnRecord {

@@ -18,82 +18,165 @@ import {
   Collaborator,
   ServiceOrder,
   SupplyApplicationRecord,
+  SupplyRequisitionRM,
   ApplicationItem
 } from '@/types';
+import {
+  QTY_EPSILON,
+  getOriginBalances,
+  nextSequentialCode,
+  originKey,
+  roundQty
+} from '@/lib/supplyTrace';
 
 interface AplicacaoInsumosViewProps {
   collaborators: Collaborator[];
   serviceOrders: ServiceOrder[];
   applications: SupplyApplicationRecord[];
+  requisitions: SupplyRequisitionRM[];
   preselectedOrderId?: string;
   onProcessApplication: (app: SupplyApplicationRecord) => boolean;
 }
+
+const newRequestId = () => `app-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const itemKey = (i: ApplicationItem) => originKey(i.rmId, i.rmItemId, i.productId);
 
 export function AplicacaoInsumosView({
   collaborators,
   serviceOrders,
   applications,
+  requisitions,
   preselectedOrderId,
   onProcessApplication,
 }: AplicacaoInsumosViewProps) {
   const [matricola, setMatricola] = useState(collaborators[0]?.matricola || '');
   const [serviceOrderId, setServiceOrderId] = useState(preselectedOrderId || '');
+  const [responsibleName, setResponsibleName] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Itens para aplicar
+  // Itens para aplicar (cada linha aponta para o item da RM de origem)
   const [items, setItems] = useState<ApplicationItem[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState('');
+  const [selectedOriginKey, setSelectedOriginKey] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  // Identificador único do lançamento: se o formulário for enviado duas vezes, o armazenamento barra a segunda
+  const [requestId, setRequestId] = useState(newRequestId);
 
   const selectedCollab = collaborators.find((c) => c.matricola === matricola);
   const selectedOrder = serviceOrders.find((o) => o.id === serviceOrderId);
 
-  // Insumo selecionado dentre os que o técnico possui em mãos
-  const itemInCustody = selectedCollab?.custody.find(
-    (c) => c.productId === selectedProductId
+  const openOrders = serviceOrders.filter((o) => o.status !== 'cancelado' && o.status !== 'concluido');
+  // Só entram na lista as OS em que esta matrícula tem material para aplicar
+  const ordersWithBalance = openOrders.filter(
+    (o) => getOriginBalances(selectedCollab, requisitions, { serviceOrderId: o.id }).length > 0
   );
 
-  const handleAddItemToApply = () => {
-    if (!itemInCustody) return;
-    setErrorMessage('');
-    const qty = parseFloat(quantity) || 1;
+  // Produtos requisitados pela matrícula, cada um com a RM de origem e o saldo do item
+  const origins = getOriginBalances(selectedCollab, requisitions, {
+    serviceOrderId: serviceOrderId || undefined,
+  });
+  const selectedOrigin = origins.find((o) => o.key === selectedOriginKey);
 
-    if (itemInCustody.quantity < qty) {
+  const stagedByKey = new Map<string, number>();
+  for (const it of items) {
+    stagedByKey.set(itemKey(it), roundQty((stagedByKey.get(itemKey(it)) || 0) + it.quantity));
+  }
+  const availableOf = (o: { key: string; remaining: number }) =>
+    roundQty(o.remaining - (stagedByKey.get(o.key) || 0));
+
+  const rmOrderCompatible = (rmId: string | undefined, orderId: string) => {
+    const rm = rmId ? requisitions.find((r) => r.id === rmId) : undefined;
+    return !rm?.serviceOrderId || rm.serviceOrderId === orderId;
+  };
+
+  const handleChangeMatricola = (value: string) => {
+    setMatricola(value);
+    setSelectedOriginKey('');
+    setItems([]);
+    setErrorMessage('');
+    setSuccessMessage('');
+    const col = collaborators.find((c) => c.matricola === value);
+    if (serviceOrderId && getOriginBalances(col, requisitions, { serviceOrderId }).length === 0) {
+      setServiceOrderId('');
+    }
+  };
+
+  const handleChangeOrder = (value: string) => {
+    setServiceOrderId(value);
+    setErrorMessage('');
+    if (value) {
+      setItems(items.filter((i) => i.origin === 'legado' || rmOrderCompatible(i.rmId, value)));
+      if (selectedOrigin?.serviceOrderId && selectedOrigin.serviceOrderId !== value) setSelectedOriginKey('');
+    }
+  };
+
+  const handleSelectOrigin = (key: string) => {
+    setSelectedOriginKey(key);
+    setErrorMessage('');
+    const origin = origins.find((o) => o.key === key);
+    // RM vinculada a uma OS: a OS de destino é a da própria RM
+    if (origin?.serviceOrderId && !serviceOrderId && openOrders.some((o) => o.id === origin.serviceOrderId)) {
+      setServiceOrderId(origin.serviceOrderId);
+    }
+  };
+
+  const handleAddItemToApply = () => {
+    if (!selectedOrigin) return;
+    setErrorMessage('');
+    const qty = parseFloat(quantity);
+
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setErrorMessage('Informe uma quantidade maior que zero.');
+      return;
+    }
+    if (!serviceOrderId) {
+      setErrorMessage('Selecione a Ordem de Serviço de destino antes de adicionar o insumo.');
+      return;
+    }
+    if (selectedOrigin.serviceOrderId && selectedOrigin.serviceOrderId !== serviceOrderId) {
       setErrorMessage(
-        `O técnico possui apenas ${itemInCustody.quantity} ${itemInCustody.unit} em custódia. Não é possível aplicar ${qty} ${itemInCustody.unit}.`
+        `O material da ${selectedOrigin.rmNumber} foi retirado para ${selectedOrigin.serviceOrderCode} e só pode ser aplicado nessa OS.`
       );
       return;
     }
 
-    const existingIndex = items.findIndex((i) => i.productId === itemInCustody.productId);
+    const available = availableOf(selectedOrigin);
+    if (qty > available + QTY_EPSILON) {
+      const where = selectedOrigin.origin === 'rm' ? `na ${selectedOrigin.rmNumber}` : 'no saldo anterior ao controle por RM';
+      setErrorMessage(
+        `Só restam ${available} ${selectedOrigin.unit} de "${selectedOrigin.productName}" ${where}. Não é possível aplicar ${qty} ${selectedOrigin.unit}.`
+      );
+      return;
+    }
+
+    const existingIndex = items.findIndex((i) => itemKey(i) === selectedOrigin.key);
     if (existingIndex >= 0) {
       const updated = [...items];
-      const newTotal = updated[existingIndex].quantity + qty;
-      if (itemInCustody.quantity < newTotal) {
-        setErrorMessage(
-          `Quantidade total (${newTotal} ${itemInCustody.unit}) excede a custódia disponível de ${itemInCustody.quantity} ${itemInCustody.unit}.`
-        );
-        return;
-      }
-      updated[existingIndex].quantity = newTotal;
+      updated[existingIndex] = {
+        ...updated[existingIndex],
+        quantity: roundQty(updated[existingIndex].quantity + qty),
+      };
       setItems(updated);
     } else {
       setItems([
         ...items,
         {
-          productId: itemInCustody.productId,
-          productName: itemInCustody.productName,
-          sku: itemInCustody.sku,
-          unit: itemInCustody.unit,
-          quantity: qty,
+          productId: selectedOrigin.productId,
+          productName: selectedOrigin.productName,
+          sku: selectedOrigin.sku,
+          unit: selectedOrigin.unit,
+          quantity: roundQty(qty),
+          origin: selectedOrigin.origin,
+          rmId: selectedOrigin.rmId,
+          rmNumber: selectedOrigin.rmNumber,
+          rmItemId: selectedOrigin.rmItemId,
         },
       ]);
     }
 
-    setSelectedProductId('');
+    setSelectedOriginKey('');
     setQuantity('1');
   };
 
@@ -112,8 +195,12 @@ export function AplicacaoInsumosView({
     }
 
     const newAppRecord: SupplyApplicationRecord = {
-      id: `app-${Date.now()}`,
-      appCode: `APL-2026-${Math.floor(100 + Math.random() * 900)}`,
+      id: requestId,
+      appCode: nextSequentialCode(
+        'APL',
+        applications.map((a) => a.appCode),
+        new Date().getFullYear()
+      ),
       date: new Date().toISOString(),
       matricola: selectedCollab.matricola,
       technicianName: selectedCollab.name,
@@ -121,16 +208,20 @@ export function AplicacaoInsumosView({
       serviceOrderCode: selectedOrder.code,
       clientName: selectedOrder.clientName,
       items,
+      responsibleName: responsibleName.trim() || selectedCollab.name,
       notes,
     };
 
     const ok = onProcessApplication(newAppRecord);
     if (ok) {
+      const from = Array.from(new Set(items.map((i) => i.rmNumber).filter(Boolean))).join(', ');
       setSuccessMessage(
-        `Aplicação confirmada! Os insumos saíram da matrícula ${selectedCollab.matricola} e foram incorporados ao custo real da ${selectedOrder.code}.`
+        `Aplicação confirmada! Baixados o saldo do item da RM${from ? ` (${from})` : ''}, a custódia da matrícula ${selectedCollab.matricola} e lançado o consumo na ${selectedOrder.code}.`
       );
       setItems([]);
       setNotes('');
+      setSelectedOriginKey('');
+      setRequestId(newRequestId());
     }
   };
 
@@ -139,7 +230,8 @@ export function AplicacaoInsumosView({
       a.appCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
       a.matricola.toLowerCase().includes(searchTerm.toLowerCase()) ||
       a.serviceOrderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.clientName.toLowerCase().includes(searchTerm.toLowerCase())
+      a.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      a.items.some((i) => (i.rmNumber || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -218,11 +310,7 @@ export function AplicacaoInsumosView({
                 <select
                   required
                   value={matricola}
-                  onChange={(e) => {
-                    setMatricola(e.target.value);
-                    setSelectedProductId('');
-                    setItems([]);
-                  }}
+                  onChange={(e) => handleChangeMatricola(e.target.value)}
                   className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 font-mono font-medium focus:outline-none focus:ring-1 focus:ring-slate-900"
                 >
                   {collaborators.length === 0 ? (
@@ -249,62 +337,73 @@ export function AplicacaoInsumosView({
                 <select
                   required
                   value={serviceOrderId}
-                  onChange={(e) => setServiceOrderId(e.target.value)}
+                  onChange={(e) => handleChangeOrder(e.target.value)}
                   className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
                 >
                   <option value="">
                     {serviceOrders.length === 0
                       ? 'Nenhuma ordem cadastrada'
+                      : ordersWithBalance.length === 0
+                      ? 'Nenhuma OS com material desta matrícula'
                       : 'Selecione a Ordem de Serviço...'}
                   </option>
-                  {serviceOrders
-                    .filter((o) => o.status !== 'cancelado')
-                    .map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.code} - {o.clientName} ({o.status.toUpperCase()})
-                      </option>
-                    ))}
+                  {ordersWithBalance.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.code} - {o.clientName} ({o.status.toUpperCase()})
+                    </option>
+                  ))}
                 </select>
-                {serviceOrders.length === 0 && (
+                {serviceOrders.length === 0 ? (
                   <span className="text-[10px] text-amber-600 block mt-1">
                     Aviso: Crie uma Ordem de Serviço no menu "Serviços & OS".
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-500 block mt-1">
+                    Só aparecem as OS em que esta matrícula tem material para aplicar.
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Insumos para Aplicar a partir da Custódia */}
+            {/* Insumos requisitados pela matrícula, com a RM de origem de cada um */}
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-800">
-                  Insumos em Custódia com {selectedCollab?.name}
+                  Insumos requisitados por {selectedCollab?.name}
                 </span>
-                {itemInCustody && (
+                {selectedOrigin && (
                   <span className="font-mono text-indigo-700 text-[11px] font-bold">
-                    Disponível na matrícula: {itemInCustody.quantity} {itemInCustody.unit}
+                    Disponível nesta requisição: {availableOf(selectedOrigin)} {selectedOrigin.unit}
                   </span>
                 )}
               </div>
 
-              {selectedCollab && selectedCollab.custody.length === 0 ? (
+              {origins.length === 0 ? (
                 <div className="p-3 bg-white text-slate-400 border border-slate-200 rounded text-center">
-                  Este colaborador não possui insumos em sua matrícula. Requisite no Almoxarifado primeiro.
+                  {serviceOrderId
+                    ? 'Esta matrícula não tem material disponível para a OS selecionada. Requisite no Almoxarifado vinculando a RM a esta OS.'
+                    : 'Este colaborador não possui insumos requisitados com saldo. Requisite no Almoxarifado primeiro.'}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                   <div className="sm:col-span-8">
-                    <label className="block text-slate-600 mb-1">Item na Posse do Técnico</label>
+                    <label className="block text-slate-600 mb-1">Insumo e RM de origem</label>
                     <select
-                      value={selectedProductId}
-                      onChange={(e) => setSelectedProductId(e.target.value)}
+                      value={selectedOriginKey}
+                      onChange={(e) => handleSelectOrigin(e.target.value)}
                       className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
                     >
-                      <option value="">Selecione o insumo em custódia...</option>
-                      {selectedCollab?.custody.map((c) => (
-                        <option key={c.productId} value={c.productId}>
-                          [{c.sku}] {c.productName} (Saldo: {c.quantity} {c.unit})
-                        </option>
-                      ))}
+                      <option value="">Selecione o insumo e a RM de origem...</option>
+                      {origins.map((o) => {
+                        const left = availableOf(o);
+                        return (
+                          <option key={o.key} value={o.key} disabled={left <= QTY_EPSILON}>
+                            {o.origin === 'rm' ? `[${o.rmNumber}]` : '[Saldo anterior, sem RM]'} [{o.sku}] {o.productName} — saldo {left} {o.unit}
+                            {o.origin === 'rm' ? ` (requisitado ${o.requested}, aplicado ${o.applied}, devolvido ${o.returned})` : ''}
+                            {o.serviceOrderCode ? ` · OS ${o.serviceOrderCode}` : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -313,7 +412,8 @@ export function AplicacaoInsumosView({
                     <input
                       type="number"
                       step="any"
-                      min="0.1"
+                      min="0"
+                      max={selectedOrigin ? availableOf(selectedOrigin) : undefined}
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value)}
                       className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 font-mono bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
@@ -324,11 +424,39 @@ export function AplicacaoInsumosView({
                     <button
                       type="button"
                       onClick={handleAddItemToApply}
-                      disabled={!selectedProductId}
+                      disabled={!selectedOrigin}
                       className="w-full py-1.5 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50"
                     >
                       Aplicar
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Detalhe da origem selecionada: de qual RM veio e quanto ainda resta */}
+              {selectedOrigin && (
+                <div className="p-3 bg-white border border-indigo-100 rounded-lg grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+                  <div>
+                    <div className="text-slate-400 uppercase text-[10px]">RM de origem</div>
+                    <div className="font-mono font-bold text-indigo-800">
+                      {selectedOrigin.rmNumber || 'Sem RM (saldo anterior)'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400 uppercase text-[10px]">Requisitado</div>
+                    <div className="font-mono font-bold text-slate-900">{selectedOrigin.requested} {selectedOrigin.unit}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400 uppercase text-[10px]">Já aplicado</div>
+                    <div className="font-mono font-bold text-slate-900">{selectedOrigin.applied} {selectedOrigin.unit}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400 uppercase text-[10px]">Devolvido</div>
+                    <div className="font-mono font-bold text-slate-900">{selectedOrigin.returned} {selectedOrigin.unit}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400 uppercase text-[10px]">Saldo restante</div>
+                    <div className="font-mono font-bold text-emerald-700">{availableOf(selectedOrigin)} {selectedOrigin.unit}</div>
                   </div>
                 </div>
               )}
@@ -339,6 +467,7 @@ export function AplicacaoInsumosView({
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-100 text-slate-500 uppercase text-[10px]">
                       <tr>
+                        <th className="py-2 px-3">RM de Origem</th>
                         <th className="py-2 px-3">Insumo Aplicado</th>
                         <th className="py-2 px-3 text-right">Qtd</th>
                         <th className="py-2 px-3 text-center">Un</th>
@@ -347,7 +476,10 @@ export function AplicacaoInsumosView({
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-mono">
                       {items.map((it, idx) => (
-                        <tr key={idx}>
+                        <tr key={itemKey(it)}>
+                          <td className="py-2 px-3 font-bold text-indigo-700 whitespace-nowrap">
+                            {it.rmNumber || <span className="font-sans font-normal text-slate-400">Saldo anterior</span>}
+                          </td>
                           <td className="py-2 px-3 font-sans">
                             <span className="font-semibold text-slate-900">{it.productName}</span>{' '}
                             <span className="text-slate-400 text-[10px]">[{it.sku}]</span>
@@ -375,17 +507,31 @@ export function AplicacaoInsumosView({
               )}
             </div>
 
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">
-                Relato Técnico da Aplicação
-              </label>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Ex: Utilizado na instalação da linha frigorífica do bloco cirúrgico..."
-                className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Responsável pelo Lançamento
+                </label>
+                <input
+                  type="text"
+                  value={responsibleName}
+                  onChange={(e) => setResponsibleName(e.target.value)}
+                  placeholder={selectedCollab ? `Padrão: ${selectedCollab.name}` : 'Nome do responsável'}
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">
+                  Relato Técnico da Aplicação
+                </label>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Ex: Utilizado na instalação da linha frigorífica do bloco cirúrgico..."
+                  className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                />
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
@@ -450,6 +596,7 @@ export function AplicacaoInsumosView({
                           <span className="font-medium text-slate-900">{app.productName}</span>
                           <div className="text-[10px] text-slate-400 font-mono">
                             Resp: {app.matricola} ({app.technicianName})
+                            {app.rmNumber ? ` · ${app.rmNumber}` : ''}
                           </div>
                         </div>
                         <span className="font-mono font-bold text-slate-900">
@@ -551,9 +698,19 @@ export function AplicacaoInsumosView({
                   </td>
                   <td className="py-3 px-3 text-slate-700">{app.clientName}</td>
                   <td className="py-3 px-3 max-w-xs font-mono">
-                    <div className="text-slate-900 font-semibold truncate">
-                      {app.items.map((i) => `${i.quantity} ${i.unit} ${i.productName}`).join(', ')}
+                    <div className="space-y-0.5">
+                      {app.items.map((i, idx) => (
+                        <div key={idx} className="text-slate-900 font-semibold">
+                          {i.quantity} {i.unit} {i.productName}{' '}
+                          <span className="font-normal text-indigo-700">
+                            {i.rmNumber ? `· ${i.rmNumber}` : '· sem RM (histórico anterior)'}
+                          </span>
+                        </div>
+                      ))}
                     </div>
+                    {app.responsibleName && (
+                      <div className="text-[10px] font-sans text-slate-400 mt-1">Responsável: {app.responsibleName}</div>
+                    )}
                   </td>
                 </tr>
               )))}

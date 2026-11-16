@@ -13,21 +13,27 @@ import {
   CheckCircle2,
   ArrowRight,
   ShieldAlert,
-  Printer
+  Printer,
+  History
 } from 'lucide-react';
 import {
   Collaborator,
   Product,
   ServiceOrder,
   SupplyRequisitionRM,
+  SupplyApplicationRecord,
+  SupplyReturnRecord,
   RequisitionItem
 } from '@/types';
+import { buildRMTrace, nextSequentialCode } from '@/lib/supplyTrace';
 
 interface RequisicaoRMViewProps {
   collaborators: Collaborator[];
   products: Product[];
   serviceOrders: ServiceOrder[];
   requisitions: SupplyRequisitionRM[];
+  applications: SupplyApplicationRecord[];
+  returns: SupplyReturnRecord[];
   preselectedOrderId?: string;
   onProcessRM: (rm: SupplyRequisitionRM) => boolean;
 }
@@ -37,11 +43,14 @@ export function RequisicaoRMView({
   products,
   serviceOrders,
   requisitions,
+  applications,
+  returns,
   preselectedOrderId,
   onProcessRM,
 }: RequisicaoRMViewProps) {
   const [isFormOpen, setIsFormOpen] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [expandedRmId, setExpandedRmId] = useState('');
 
   // Form State
   const [matricola, setMatricola] = useState(collaborators[0]?.matricola || '');
@@ -121,7 +130,11 @@ export function RequisicaoRMView({
 
     const newRM: SupplyRequisitionRM = {
       id: `rm-${Date.now()}`,
-      rmNumber: `RM-2026-${Math.floor(100 + Math.random() * 900)}`,
+      rmNumber: nextSequentialCode(
+        'RM',
+        requisitions.map((r) => r.rmNumber),
+        new Date().getFullYear()
+      ),
       date: new Date().toISOString(),
       matricola,
       technicianName: col ? col.name : 'Colaborador',
@@ -525,42 +538,131 @@ export function RequisicaoRMView({
                   </td>
                 </tr>
               ) : (
-                filteredRMs.map((rm) => (
-                <tr key={rm.id} className="hover:bg-slate-50/70 transition-colors font-sans">
-                  <td className="py-3 px-3 font-mono font-bold text-blue-700 whitespace-nowrap">
-                    {rm.rmNumber}
-                  </td>
-                  <td className="py-3 px-3 text-slate-600 text-xs whitespace-nowrap">
-                    {new Date(rm.date).toLocaleString('pt-BR')}
-                  </td>
-                  <td className="py-3 px-3 whitespace-nowrap">
-                    <div className="font-semibold text-slate-900">{rm.technicianName}</div>
-                    <div className="font-mono text-slate-500 text-[11px]">{rm.matricola}</div>
-                  </td>
-                  <td className="py-3 px-3 whitespace-nowrap">
-                    {rm.serviceOrderCode ? (
-                      <span className="font-mono text-slate-800 font-medium bg-slate-100 px-2 py-0.5 rounded">
-                        {rm.serviceOrderCode}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 italic">Geral</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-3 max-w-xs">
-                    <div className="text-slate-800 truncate">
-                      {rm.items.map((i) => `${i.quantity} ${i.unit} ${i.productName}`).join(', ')}
-                    </div>
-                  </td>
-                  <td className="py-3 px-3 text-slate-600 text-xs whitespace-nowrap">
-                    {rm.dispensedBy}
-                  </td>
-                  <td className="py-3 px-3 text-right whitespace-nowrap">
-                    <span className="inline-block px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700">
-                      Entregue
-                    </span>
-                  </td>
-                </tr>
-              )))}
+                filteredRMs.map((rm) => {
+                  const trace = buildRMTrace(rm, applications, returns);
+                  const isOpen = expandedRmId === rm.id;
+                  const tracked = trace.some((t) => t.tracked);
+                  return (
+                    <React.Fragment key={rm.id}>
+                      <tr className="hover:bg-slate-50/70 transition-colors font-sans">
+                        <td className="py-3 px-3 font-mono font-bold text-blue-700 whitespace-nowrap">
+                          {rm.rmNumber}
+                        </td>
+                        <td className="py-3 px-3 text-slate-600 text-xs whitespace-nowrap">
+                          {new Date(rm.date).toLocaleString('pt-BR')}
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <div className="font-semibold text-slate-900">{rm.technicianName}</div>
+                          <div className="font-mono text-slate-500 text-[11px]">{rm.matricola}</div>
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {rm.serviceOrderCode ? (
+                            <span className="font-mono text-slate-800 font-medium bg-slate-100 px-2 py-0.5 rounded">
+                              {rm.serviceOrderCode}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic">Geral</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="space-y-0.5">
+                            {trace.map((t, idx) => (
+                              <div key={t.item.itemId || idx} className="text-slate-800 font-mono text-[11px]">
+                                {t.requested} {t.item.unit} {t.item.productName}
+                                {t.tracked ? (
+                                  <span className="text-slate-500">
+                                    {' '}
+                                    · aplicado {t.applied} · devolvido {t.returned} ·{' '}
+                                    <strong className={t.remaining > 0 ? 'text-indigo-700' : 'text-slate-400'}>
+                                      saldo {t.remaining}
+                                    </strong>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-sans italic"> · controle anterior (sem saldo por item)</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-slate-600 text-xs whitespace-nowrap">
+                          {rm.dispensedBy}
+                        </td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
+                          <span className="inline-block px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-700">
+                            Entregue
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedRmId(isOpen ? '' : rm.id)}
+                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-slate-700 bg-slate-100 hover:bg-slate-200"
+                          >
+                            <History className="w-3 h-3" />
+                            {isOpen ? 'Ocultar' : 'Rastrear'}
+                          </button>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr className="bg-slate-50/60">
+                          <td colSpan={7} className="px-3 py-3">
+                            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                              Rastreabilidade da {rm.rmNumber}: retirada, aplicações e devoluções de cada item
+                            </div>
+                            {!tracked && (
+                              <div className="text-[11px] text-slate-500 italic mb-2">
+                                RM emitida antes do controle por item: só a retirada é conhecida. Aplicações e devoluções
+                                anteriores seguem no histórico, sem vínculo com esta RM.
+                              </div>
+                            )}
+                            <div className="space-y-3">
+                              {trace.map((t, idx) => (
+                                <div key={t.item.itemId || idx} className="bg-white border border-slate-200 rounded-lg p-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                    <div className="font-semibold text-slate-900 text-xs">
+                                      {t.item.productName}{' '}
+                                      <span className="text-slate-400 font-mono text-[10px]">[{t.item.sku}]</span>
+                                    </div>
+                                    {t.tracked && (
+                                      <div className="font-mono text-[11px] text-slate-600">
+                                        requisitado {t.requested} · aplicado {t.applied} · devolvido {t.returned} ·{' '}
+                                        <strong className="text-indigo-700">saldo {t.remaining} {t.item.unit}</strong>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <ol className="space-y-1">
+                                    {t.events.map((ev, i) => (
+                                      <li key={`${ev.recordId}-${i}`} className="flex flex-wrap items-center gap-2 text-[11px]">
+                                        <span className="font-mono text-slate-400 whitespace-nowrap">
+                                          {new Date(ev.date).toLocaleString('pt-BR')}
+                                        </span>
+                                        <span
+                                          className={`px-1.5 py-0.5 rounded font-medium ${
+                                            ev.type === 'retirada'
+                                              ? 'bg-blue-50 text-blue-700'
+                                              : ev.type === 'aplicacao'
+                                              ? 'bg-indigo-50 text-indigo-700'
+                                              : 'bg-emerald-50 text-emerald-700'
+                                          }`}
+                                        >
+                                          {ev.type === 'retirada' ? 'Retirada' : ev.type === 'aplicacao' ? 'Aplicação' : 'Devolução'}
+                                        </span>
+                                        <span className="font-mono font-bold text-slate-800">{ev.code}</span>
+                                        <span className="font-mono text-slate-900">
+                                          {ev.quantity} {t.item.unit}
+                                        </span>
+                                        <span className="text-slate-500">{ev.detail}</span>
+                                      </li>
+                                    ))}
+                                  </ol>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

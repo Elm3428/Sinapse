@@ -29,11 +29,18 @@ import {
   SupplyApplicationRecord,
   SupplyReturnRecord
 } from '@/types';
+import { getOriginBalances, nextSequentialCode, roundQty } from '@/lib/supplyTrace';
+
+const newId = (prefix: string) =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 interface MobileFlutterPreviewProps {
   collaborators: Collaborator[];
   serviceOrders: ServiceOrder[];
   products: Product[];
+  requisitions: SupplyRequisitionRM[];
+  applications: SupplyApplicationRecord[];
+  returns: SupplyReturnRecord[];
   onProcessRM: (rm: SupplyRequisitionRM) => boolean;
   onProcessApplication: (app: SupplyApplicationRecord) => boolean;
   onProcessReturn: (ret: SupplyReturnRecord) => boolean;
@@ -44,6 +51,9 @@ export function MobileFlutterPreview({
   collaborators,
   serviceOrders,
   products,
+  requisitions,
+  applications,
+  returns,
   onProcessRM,
   onProcessApplication,
   onProcessReturn,
@@ -62,6 +72,7 @@ export function MobileFlutterPreview({
   // Estados dos fluxos rápidos móveis
   const [selectedOSId, setSelectedOSId] = useState('');
   const [selectedProdId, setSelectedProdId] = useState('');
+  const [selectedOriginKey, setSelectedOriginKey] = useState('');
   const [qty, setQty] = useState('1');
   const [mobileFeedback, setMobileFeedback] = useState<string | null>(null);
 
@@ -72,6 +83,16 @@ export function MobileFlutterPreview({
   const technicianOrders = serviceOrders.filter(
     (o) => o.assignedMatricola === activeTechnicianMatricola
   );
+
+  // Origens (itens de RM) com saldo para aplicar na OS escolhida / devolver
+  const applyOrigins = getOriginBalances(currentTechnician, requisitions, {
+    serviceOrderId: selectedOSId || undefined,
+  });
+  const returnOrigins = getOriginBalances(currentTechnician, requisitions);
+  const originLabel = (o: { rmNumber?: string; productName: string; remaining: number; unit: string; serviceOrderCode?: string }) =>
+    `${o.rmNumber || 'Saldo anterior'} · ${o.productName} (saldo ${o.remaining} ${o.unit}${
+      o.serviceOrderCode ? ` · ${o.serviceOrderCode}` : ''
+    })`;
 
   // Ações rápidas no app mobile
   const handleQuickRM = (e: React.FormEvent) => {
@@ -87,8 +108,12 @@ export function MobileFlutterPreview({
     }
 
     const newRM: SupplyRequisitionRM = {
-      id: `rm-mob-${Date.now()}`,
-      rmNumber: `RM-MOB-${Math.floor(100 + Math.random() * 900)}`,
+      id: newId('rm-mob'),
+      rmNumber: nextSequentialCode(
+        'RM',
+        requisitions.map((r) => r.rmNumber),
+        new Date().getFullYear()
+      ),
       date: new Date().toISOString(),
       matricola: currentTechnician.matricola,
       technicianName: currentTechnician.name,
@@ -107,7 +132,7 @@ export function MobileFlutterPreview({
       notes: 'Requisição gerada via Flutter Mobile',
     };
 
-    onProcessRM(newRM);
+    if (!onProcessRM(newRM)) return;
     setMobileFeedback(`RM ${newRM.rmNumber} confirmada! Insumo entrou na sua matrícula.`);
     setSelectedProdId('');
     setQty('1');
@@ -119,14 +144,21 @@ export function MobileFlutterPreview({
 
   const handleQuickApplication = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOSId || !selectedProdId || !currentTechnician) return;
+    if (!selectedOSId || !selectedOriginKey || !currentTechnician) return;
 
-    const inCustody = currentTechnician.custody.find((c) => c.productId === selectedProdId);
-    if (!inCustody) return;
+    const origin = applyOrigins.find((o) => o.key === selectedOriginKey);
+    if (!origin) {
+      alert('Selecione um insumo vinculado a uma RM com saldo para esta OS.');
+      return;
+    }
 
-    const quantityNum = parseFloat(qty) || 1;
-    if (inCustody.quantity < quantityNum) {
-      alert(`Você possui apenas ${inCustody.quantity} ${inCustody.unit} em sua custódia.`);
+    const quantityNum = parseFloat(qty) || 0;
+    if (quantityNum <= 0) {
+      alert('Informe uma quantidade maior que zero.');
+      return;
+    }
+    if (roundQty(quantityNum) > origin.remaining) {
+      alert(`O saldo restante em ${origin.rmNumber || 'saldo anterior'} é ${origin.remaining} ${origin.unit}.`);
       return;
     }
 
@@ -134,29 +166,38 @@ export function MobileFlutterPreview({
     if (!order) return;
 
     const newApp: SupplyApplicationRecord = {
-      id: `app-mob-${Date.now()}`,
-      appCode: `APL-MOB-${Math.floor(100 + Math.random() * 900)}`,
+      id: newId('app-mob'),
+      appCode: nextSequentialCode(
+        'APL',
+        applications.map((a) => a.appCode),
+        new Date().getFullYear()
+      ),
       date: new Date().toISOString(),
       matricola: currentTechnician.matricola,
       technicianName: currentTechnician.name,
+      responsibleName: currentTechnician.name,
       serviceOrderId: order.id,
       serviceOrderCode: order.code,
       clientName: order.clientName,
       items: [
         {
-          productId: inCustody.productId,
-          productName: inCustody.productName,
-          sku: inCustody.sku,
-          unit: inCustody.unit,
+          productId: origin.productId,
+          productName: origin.productName,
+          sku: origin.sku,
+          unit: origin.unit,
           quantity: quantityNum,
+          origin: origin.origin,
+          rmId: origin.rmId,
+          rmNumber: origin.rmNumber,
+          rmItemId: origin.rmItemId,
         },
       ],
       notes: 'Apontamento em campo via Flutter Mobile',
     };
 
-    onProcessApplication(newApp);
+    if (!onProcessApplication(newApp)) return;
     setMobileFeedback(`Insumo aplicado com sucesso na ${order.code}!`);
-    setSelectedProdId('');
+    setSelectedOriginKey('');
     setQty('1');
     setTimeout(() => {
       setMobileFeedback(null);
@@ -166,40 +207,55 @@ export function MobileFlutterPreview({
 
   const handleQuickReturn = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProdId || !currentTechnician) return;
+    if (!selectedOriginKey || !currentTechnician) return;
 
-    const inCustody = currentTechnician.custody.find((c) => c.productId === selectedProdId);
-    if (!inCustody) return;
+    const origin = returnOrigins.find((o) => o.key === selectedOriginKey);
+    if (!origin) {
+      alert('Selecione a origem (RM) da sobra a devolver.');
+      return;
+    }
 
-    const quantityNum = parseFloat(qty) || 1;
-    if (inCustody.quantity < quantityNum) {
-      alert(`Você possui apenas ${inCustody.quantity} ${inCustody.unit} em custódia.`);
+    const quantityNum = parseFloat(qty) || 0;
+    if (quantityNum <= 0) {
+      alert('Informe uma quantidade maior que zero.');
+      return;
+    }
+    if (roundQty(quantityNum) > origin.remaining) {
+      alert(`Você possui apenas ${origin.remaining} ${origin.unit} em ${origin.rmNumber || 'saldo anterior'}.`);
       return;
     }
 
     const newReturn: SupplyReturnRecord = {
-      id: `dev-mob-${Date.now()}`,
-      returnCode: `DEV-MOB-${Math.floor(100 + Math.random() * 900)}`,
+      id: newId('dev-mob'),
+      returnCode: nextSequentialCode(
+        'DEV',
+        returns.map((r) => r.returnCode),
+        new Date().getFullYear()
+      ),
       date: new Date().toISOString(),
       matricola: currentTechnician.matricola,
       technicianName: currentTechnician.name,
       items: [
         {
-          productId: inCustody.productId,
-          productName: inCustody.productName,
-          sku: inCustody.sku,
-          unit: inCustody.unit,
+          productId: origin.productId,
+          productName: origin.productName,
+          sku: origin.sku,
+          unit: origin.unit,
           quantity: quantityNum,
           condition: 'perfeito',
+          origin: origin.origin,
+          rmId: origin.rmId,
+          rmNumber: origin.rmNumber,
+          rmItemId: origin.rmItemId,
         },
       ],
       receivedBy: 'Almoxarifado Central (Devolução Mobile)',
       notes: 'Sobra devolvida via Flutter Mobile',
     };
 
-    onProcessReturn(newReturn);
+    if (!onProcessReturn(newReturn)) return;
     setMobileFeedback(`Sobra devolvida! Almoxarifado Central reabastecido.`);
-    setSelectedProdId('');
+    setSelectedOriginKey('');
     setQty('1');
     setTimeout(() => {
       setMobileFeedback(null);
@@ -224,7 +280,10 @@ export function MobileFlutterPreview({
           <span className="text-slate-500">Técnico Logado:</span>
           <select
             value={activeTechnicianMatricola}
-            onChange={(e) => setActiveTechnicianMatricola(e.target.value)}
+            onChange={(e) => {
+              setActiveTechnicianMatricola(e.target.value);
+              setSelectedOriginKey('');
+            }}
             className="text-xs py-1 px-2 border border-slate-200 rounded font-mono font-bold bg-white"
           >
             {collaborators.length === 0 ? (
@@ -448,7 +507,10 @@ export function MobileFlutterPreview({
                     <label className="block text-slate-600 mb-1">Vincular a uma OS (Opcional)</label>
                     <select
                       value={selectedOSId}
-                      onChange={(e) => setSelectedOSId(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedOSId(e.target.value);
+                        setSelectedOriginKey('');
+                      }}
                       className="w-full p-2 border border-slate-200 rounded-lg text-slate-900 text-xs"
                     >
                       <option value="">Sem OS (Estoque do Veículo)</option>
@@ -488,7 +550,10 @@ export function MobileFlutterPreview({
                     <select
                       required
                       value={selectedOSId}
-                      onChange={(e) => setSelectedOSId(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedOSId(e.target.value);
+                        setSelectedOriginKey('');
+                      }}
                       className="w-full p-2 border border-slate-200 rounded-lg text-slate-900 text-xs font-medium"
                     >
                       <option value="">Selecione a OS...</option>
@@ -506,14 +571,16 @@ export function MobileFlutterPreview({
                     <label className="block text-slate-600 mb-1">Insumo em sua Custódia</label>
                     <select
                       required
-                      value={selectedProdId}
-                      onChange={(e) => setSelectedProdId(e.target.value)}
+                      value={selectedOriginKey}
+                      onChange={(e) => setSelectedOriginKey(e.target.value)}
                       className="w-full p-2 border border-slate-200 rounded-lg text-slate-900 text-xs font-medium"
                     >
-                      <option value="">Selecione o insumo em sua posse...</option>
-                      {currentTechnician?.custody.map((c) => (
-                        <option key={c.productId} value={c.productId}>
-                          {c.productName} (Tem: {c.quantity} {c.unit})
+                      <option value="">
+                        {selectedOSId ? 'Selecione a RM / insumo...' : 'Escolha a OS primeiro...'}
+                      </option>
+                      {applyOrigins.map((o) => (
+                        <option key={o.key} value={o.key}>
+                          {originLabel(o)}
                         </option>
                       ))}
                     </select>
@@ -534,7 +601,7 @@ export function MobileFlutterPreview({
 
                   <button
                     type="submit"
-                    disabled={!currentTechnician || currentTechnician.custody.length === 0}
+                    disabled={!currentTechnician || applyOrigins.length === 0}
                     className="w-full py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-xs mt-2"
                   >
                     Confirmar Aplicação na OS
@@ -560,14 +627,14 @@ export function MobileFlutterPreview({
                     <label className="block text-slate-600 mb-1">Sobra a Devolver</label>
                     <select
                       required
-                      value={selectedProdId}
-                      onChange={(e) => setSelectedProdId(e.target.value)}
+                      value={selectedOriginKey}
+                      onChange={(e) => setSelectedOriginKey(e.target.value)}
                       className="w-full p-2 border border-slate-200 rounded-lg text-slate-900 text-xs font-medium"
                     >
-                      <option value="">Selecione a sobra em sua posse...</option>
-                      {currentTechnician?.custody.map((c) => (
-                        <option key={c.productId} value={c.productId}>
-                          {c.productName} (Tem: {c.quantity} {c.unit})
+                      <option value="">Selecione a RM / sobra em sua posse...</option>
+                      {returnOrigins.map((o) => (
+                        <option key={o.key} value={o.key}>
+                          {originLabel(o)}
                         </option>
                       ))}
                     </select>
@@ -588,7 +655,7 @@ export function MobileFlutterPreview({
 
                   <button
                     type="submit"
-                    disabled={!currentTechnician || currentTechnician.custody.length === 0}
+                    disabled={!currentTechnician || returnOrigins.length === 0}
                     className="w-full py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 text-xs mt-2"
                   >
                     Confirmar Estorno ao Almoxarifado

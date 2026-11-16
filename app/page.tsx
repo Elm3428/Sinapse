@@ -191,6 +191,7 @@ export default function HomePage() {
       return false;
     }
     setApplications(res.applications);
+    setRequisitions(res.requisitions);
     setCollaborators(res.collaborators);
     setServiceOrders(res.serviceOrders);
     return true;
@@ -204,6 +205,7 @@ export default function HomePage() {
       return false;
     }
     setReturns(res.returns);
+    setRequisitions(res.requisitions);
     setCollaborators(res.collaborators);
     setProducts(res.products);
     return true;
@@ -345,6 +347,9 @@ export default function HomePage() {
               collaborators={collaborators}
               serviceOrders={serviceOrders}
               products={products}
+              requisitions={requisitions}
+              applications={applications}
+              returns={returns}
               onProcessRM={handleProcessRM}
               onProcessApplication={handleProcessApplication}
               onProcessReturn={handleProcessReturn}
@@ -435,6 +440,8 @@ export default function HomePage() {
                   products={products}
                   serviceOrders={serviceOrders}
                   requisitions={requisitions}
+                  applications={applications}
+                  returns={returns}
                   preselectedOrderId={preselectedOrderId}
                   onProcessRM={handleProcessRM}
                 />
@@ -446,6 +453,7 @@ export default function HomePage() {
                   collaborators={collaborators}
                   serviceOrders={serviceOrders}
                   applications={applications}
+                  requisitions={requisitions}
                   preselectedOrderId={preselectedOrderId}
                   onProcessApplication={handleProcessApplication}
                 />
@@ -457,6 +465,7 @@ export default function HomePage() {
                   collaborators={collaborators}
                   serviceOrders={serviceOrders}
                   returns={returns}
+                  requisitions={requisitions}
                   onProcessReturn={handleProcessReturn}
                 />
               )}

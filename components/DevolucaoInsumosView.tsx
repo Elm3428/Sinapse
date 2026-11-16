@@ -17,22 +17,35 @@ import {
 } from 'lucide-react';
 import {
   Collaborator,
+  SupplyRequisitionRM,
   SupplyReturnRecord,
   ReturnItem,
   ServiceOrder
 } from '@/types';
+import {
+  QTY_EPSILON,
+  getOriginBalances,
+  nextSequentialCode,
+  originKey,
+  roundQty
+} from '@/lib/supplyTrace';
 
 interface DevolucaoInsumosViewProps {
   collaborators: Collaborator[];
   serviceOrders: ServiceOrder[];
   returns: SupplyReturnRecord[];
+  requisitions: SupplyRequisitionRM[];
   onProcessReturn: (ret: SupplyReturnRecord) => boolean;
 }
+
+const newRequestId = () => `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const itemKey = (i: ReturnItem) => originKey(i.rmId, i.rmItemId, i.productId);
 
 export function DevolucaoInsumosView({
   collaborators,
   serviceOrders,
   returns,
+  requisitions,
   onProcessReturn,
 }: DevolucaoInsumosViewProps) {
   const [matricola, setMatricola] = useState(collaborators[0]?.matricola || '');
@@ -40,63 +53,86 @@ export function DevolucaoInsumosView({
   const [receivedBy, setReceivedBy] = useState('MAT-1001 (Almoxarife Central)');
   const [notes, setNotes] = useState('');
 
-  // Itens para devolver
+  // Itens para devolver (cada linha aponta para o item da RM de origem)
   const [items, setItems] = useState<ReturnItem[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState('');
+  const [selectedOriginKey, setSelectedOriginKey] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [condition, setCondition] = useState<ReturnItem['condition']>('perfeito');
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  // Identificador único do lançamento: reenviar o formulário não devolve duas vezes
+  const [requestId, setRequestId] = useState(newRequestId);
 
   const selectedCollab = collaborators.find((c) => c.matricola === matricola);
   const selectedOrder = serviceOrders.find((o) => o.id === serviceOrderId);
 
-  // Insumo selecionado dentre as sobras que o técnico tem
-  const itemInCustody = selectedCollab?.custody.find(
-    (c) => c.productId === selectedProductId
-  );
+  // Sobras da matrícula, separadas por RM de origem (e o saldo anterior ao controle por RM)
+  const origins = getOriginBalances(selectedCollab, requisitions);
+  const selectedOrigin = origins.find((o) => o.key === selectedOriginKey);
+
+  const stagedByKey = new Map<string, number>();
+  for (const it of items) {
+    stagedByKey.set(itemKey(it), roundQty((stagedByKey.get(itemKey(it)) || 0) + it.quantity));
+  }
+  const availableOf = (o: { key: string; remaining: number }) =>
+    roundQty(o.remaining - (stagedByKey.get(o.key) || 0));
+
+  const handleChangeMatricola = (value: string) => {
+    setMatricola(value);
+    setSelectedOriginKey('');
+    setItems([]);
+    setErrorMessage('');
+    setSuccessMessage('');
+  };
 
   const handleAddItemToReturn = () => {
-    if (!itemInCustody) return;
+    if (!selectedOrigin) return;
     setErrorMessage('');
-    const qty = parseFloat(quantity) || 1;
+    const qty = parseFloat(quantity);
 
-    if (itemInCustody.quantity < qty) {
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setErrorMessage('Informe uma quantidade maior que zero.');
+      return;
+    }
+    const available = availableOf(selectedOrigin);
+    if (qty > available + QTY_EPSILON) {
+      const where = selectedOrigin.origin === 'rm' ? `na ${selectedOrigin.rmNumber}` : 'no saldo anterior ao controle por RM';
       setErrorMessage(
-        `O colaborador possui apenas ${itemInCustody.quantity} ${itemInCustody.unit} em custódia. Não é possível devolver ${qty} ${itemInCustody.unit}.`
+        `Só restam ${available} ${selectedOrigin.unit} de "${selectedOrigin.productName}" ${where} (já descontado o que foi aplicado). Não é possível devolver ${qty} ${selectedOrigin.unit}.`
       );
       return;
     }
 
-    const existingIndex = items.findIndex((i) => i.productId === itemInCustody.productId);
+    const existingIndex = items.findIndex(
+      (i) => itemKey(i) === selectedOrigin.key && i.condition === condition
+    );
     if (existingIndex >= 0) {
       const updated = [...items];
-      const newTotal = updated[existingIndex].quantity + qty;
-      if (itemInCustody.quantity < newTotal) {
-        setErrorMessage(
-          `A soma devolvida (${newTotal} ${itemInCustody.unit}) excede a quantidade em custódia de ${itemInCustody.quantity} ${itemInCustody.unit}.`
-        );
-        return;
-      }
-      updated[existingIndex].quantity = newTotal;
-      updated[existingIndex].condition = condition;
+      updated[existingIndex] = {
+        ...updated[existingIndex],
+        quantity: roundQty(updated[existingIndex].quantity + qty),
+      };
       setItems(updated);
     } else {
       setItems([
         ...items,
         {
-          productId: itemInCustody.productId,
-          productName: itemInCustody.productName,
-          sku: itemInCustody.sku,
-          unit: itemInCustody.unit,
-          quantity: qty,
+          productId: selectedOrigin.productId,
+          productName: selectedOrigin.productName,
+          sku: selectedOrigin.sku,
+          unit: selectedOrigin.unit,
+          quantity: roundQty(qty),
           condition,
+          origin: selectedOrigin.origin,
+          rmId: selectedOrigin.rmId,
+          rmNumber: selectedOrigin.rmNumber,
+          rmItemId: selectedOrigin.rmItemId,
         },
       ]);
     }
 
-    setSelectedProductId('');
+    setSelectedOriginKey('');
     setQuantity('1');
     setCondition('perfeito');
   };
@@ -116,8 +152,12 @@ export function DevolucaoInsumosView({
     }
 
     const newReturnRecord: SupplyReturnRecord = {
-      id: `dev-${Date.now()}`,
-      returnCode: `DEV-2026-${Math.floor(100 + Math.random() * 900)}`,
+      id: requestId,
+      returnCode: nextSequentialCode(
+        'DEV',
+        returns.map((r) => r.returnCode),
+        new Date().getFullYear()
+      ),
       date: new Date().toISOString(),
       matricola: selectedCollab.matricola,
       technicianName: selectedCollab.name,
@@ -131,10 +171,12 @@ export function DevolucaoInsumosView({
     const ok = onProcessReturn(newReturnRecord);
     if (ok) {
       setSuccessMessage(
-        `Devolução ${newReturnRecord.returnCode} processada com sucesso! As sobras foram debitadas da matrícula ${selectedCollab.matricola} e estornadas ao Almoxarifado Central.`
+        `Devolução processada com sucesso! O saldo das RMs de origem e a custódia da matrícula ${selectedCollab.matricola} foram atualizados.`
       );
       setItems([]);
       setNotes('');
+      setSelectedOriginKey('');
+      setRequestId(newRequestId());
     }
   };
 
@@ -142,7 +184,8 @@ export function DevolucaoInsumosView({
     (r) =>
       r.returnCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.matricola.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.technicianName.toLowerCase().includes(searchTerm.toLowerCase())
+      r.technicianName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      r.items.some((i) => (i.rmNumber || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -221,11 +264,7 @@ export function DevolucaoInsumosView({
                 <select
                   required
                   value={matricola}
-                  onChange={(e) => {
-                    setMatricola(e.target.value);
-                    setSelectedProductId('');
-                    setItems([]);
-                  }}
+                  onChange={(e) => handleChangeMatricola(e.target.value)}
                   className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 font-mono font-medium focus:outline-none focus:ring-1 focus:ring-slate-900"
                 >
                   {collaborators.length === 0 ? (
@@ -264,38 +303,42 @@ export function DevolucaoInsumosView({
               </div>
             </div>
 
-            {/* Seleção de Itens da Sobra */}
+            {/* Seleção de Itens da Sobra, por RM de origem */}
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-800">
                   Sobras Disponíveis com {selectedCollab?.name}
                 </span>
-                {itemInCustody && (
+                {selectedOrigin && (
                   <span className="font-mono text-emerald-700 text-[11px] font-bold">
-                    Saldo na Matrícula: {itemInCustody.quantity} {itemInCustody.unit}
+                    Saldo nesta requisição: {availableOf(selectedOrigin)} {selectedOrigin.unit}
                   </span>
                 )}
               </div>
 
-              {selectedCollab && selectedCollab.custody.length === 0 ? (
+              {origins.length === 0 ? (
                 <div className="p-3 bg-white text-slate-400 border border-slate-200 rounded text-center">
                   Este colaborador não possui insumos restantes em custódia.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
                   <div className="sm:col-span-5">
-                    <label className="block text-slate-600 mb-1">Insumo / Sobra</label>
+                    <label className="block text-slate-600 mb-1">Insumo e RM de origem</label>
                     <select
-                      value={selectedProductId}
-                      onChange={(e) => setSelectedProductId(e.target.value)}
+                      value={selectedOriginKey}
+                      onChange={(e) => setSelectedOriginKey(e.target.value)}
                       className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
                     >
                       <option value="">Selecione o item de sobra...</option>
-                      {selectedCollab?.custody.map((c) => (
-                        <option key={c.productId} value={c.productId}>
-                          [{c.sku}] {c.productName} (Tem: {c.quantity} {c.unit})
-                        </option>
-                      ))}
+                      {origins.map((o) => {
+                        const left = availableOf(o);
+                        return (
+                          <option key={o.key} value={o.key} disabled={left <= QTY_EPSILON}>
+                            {o.origin === 'rm' ? `[${o.rmNumber}]` : '[Saldo anterior, sem RM]'} [{o.sku}] {o.productName} — tem {left} {o.unit}
+                            {o.origin === 'rm' ? ` (aplicado ${o.applied}, devolvido ${o.returned})` : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -304,7 +347,8 @@ export function DevolucaoInsumosView({
                     <input
                       type="number"
                       step="any"
-                      min="0.1"
+                      min="0"
+                      max={selectedOrigin ? availableOf(selectedOrigin) : undefined}
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value)}
                       className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-900 font-mono bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
@@ -328,7 +372,7 @@ export function DevolucaoInsumosView({
                     <button
                       type="button"
                       onClick={handleAddItemToReturn}
-                      disabled={!selectedProductId}
+                      disabled={!selectedOrigin}
                       className="w-full py-1.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50"
                     >
                       Devolver
@@ -343,6 +387,7 @@ export function DevolucaoInsumosView({
                   <table className="w-full text-xs text-left">
                     <thead className="bg-slate-100 text-slate-500 uppercase text-[10px]">
                       <tr>
+                        <th className="py-2 px-3">RM de Origem</th>
                         <th className="py-2 px-3">Item Devolvido</th>
                         <th className="py-2 px-3 text-right">Qtd</th>
                         <th className="py-2 px-3 text-center">Un</th>
@@ -352,7 +397,10 @@ export function DevolucaoInsumosView({
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-mono">
                       {items.map((it, idx) => (
-                        <tr key={idx}>
+                        <tr key={`${itemKey(it)}#${it.condition}`}>
+                          <td className="py-2 px-3 font-bold text-emerald-700 whitespace-nowrap">
+                            {it.rmNumber || <span className="font-sans font-normal text-slate-400">Saldo anterior</span>}
+                          </td>
                           <td className="py-2 px-3 font-sans">
                             <span className="font-semibold text-slate-900">{it.productName}</span>{' '}
                             <span className="text-slate-400 text-[10px]">[{it.sku}]</span>
@@ -465,19 +513,27 @@ export function DevolucaoInsumosView({
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-[340px] overflow-y-auto">
-                    {selectedCollab.custody.map((c) => (
+                    {origins.map((o) => (
                       <div
-                        key={c.productId}
+                        key={o.key}
                         className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-lg"
                       >
                         <div>
-                          <div className="font-semibold text-slate-900">{c.productName}</div>
+                          <div className="font-semibold text-slate-900">{o.productName}</div>
                           <div className="text-[10px] text-slate-400 font-mono">
-                            SKU: {c.sku}
+                            SKU: {o.sku} ·{' '}
+                            <span className="text-emerald-700 font-bold">
+                              {o.origin === 'rm' ? o.rmNumber : 'Saldo anterior, sem RM'}
+                            </span>
                           </div>
+                          {o.origin === 'rm' && (
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              req. {o.requested} · aplic. {o.applied} · dev. {o.returned}
+                            </div>
+                          )}
                         </div>
                         <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded">
-                          {c.quantity} {c.unit}
+                          {o.remaining} {o.unit}
                         </span>
                       </div>
                     ))}
@@ -554,8 +610,15 @@ export function DevolucaoInsumosView({
                     {ret.serviceOrderCode || <span className="text-slate-400 italic">Geral</span>}
                   </td>
                   <td className="py-3 px-3 max-w-xs font-mono">
-                    <div className="text-slate-900 font-medium truncate">
-                      {ret.items.map((i) => `${i.quantity} ${i.unit} ${i.productName} (${i.condition})`).join(', ')}
+                    <div className="space-y-0.5">
+                      {ret.items.map((i, idx) => (
+                        <div key={idx} className="text-slate-900 font-medium">
+                          {i.quantity} {i.unit} {i.productName} ({i.condition}){' '}
+                          <span className="font-normal text-emerald-700">
+                            {i.rmNumber ? `· ${i.rmNumber}` : '· sem RM (histórico anterior)'}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </td>
                   <td className="py-3 px-3 text-slate-600 text-xs whitespace-nowrap">
