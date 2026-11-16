@@ -1,22 +1,70 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Aniel Gestão — identidade visual inspirada na NVIDIA
+ * Verde de destaque: #76B900
+ */
+:root {
+  color-scheme: dark;
+  --aniel-green: #76B900;
+  --aniel-bg: #111315;
+  --aniel-surface: #1B1F22;
+  --aniel-surface-raised: #24292D;
+  --aniel-border: #343A40;
+  --aniel-text: #F2F4F5;
+  --aniel-muted: #A7ADB2;
+}
+
 @layer base {
   body {
-    @apply antialiased bg-slate-50 text-slate-900;
+    @apply antialiased;
+    background-color: var(--aniel-bg);
+    color: var(--aniel-text);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
+/* Superfícies neutras */
+.bg-white { background-color: var(--aniel-surface) !important; }
+.bg-slate-50 { background-color: var(--aniel-bg) !important; }
+.bg-slate-100 { background-color: var(--aniel-surface-raised) !important; }
+.bg-slate-200 { background-color: var(--aniel-border) !important; }
+.bg-slate-900 { background-color: var(--aniel-green) !important; }
+.bg-slate-800 { background-color: #5F9400 !important; }
+
+/* Tipografia */
+.text-slate-900, .text-slate-800 { color: var(--aniel-text) !important; }
+.text-slate-700, .text-slate-600 { color: #D0D5D8 !important; }
+.text-slate-500, .text-slate-400 { color: var(--aniel-muted) !important; }
+
+/* Bordas e divisórias */
+.border-slate-100, .border-slate-200, .border-slate-300 {
+  border-color: var(--aniel-border) !important;
+}
+
+/* Verde NVIDIA nos elementos de ação e seleção */
+.bg-emerald-600, .bg-emerald-500 {
+  background-color: var(--aniel-green) !important;
+}
+.bg-emerald-50 { background-color: #202D12 !important; }
+.text-emerald-700, .text-emerald-600, .text-emerald-800 {
+  color: #91D329 !important;
+}
+.border-emerald-200 { border-color: #496B20 !important; }
+
+/* Estados de interação */
+.hover\\:bg-slate-100:hover { background-color: var(--aniel-surface-raised) !important; }
+.hover\\:bg-slate-800:hover { background-color: #5F9400 !important; }
+.focus\\:ring-slate-900:focus { --tw-ring-color: var(--aniel-green) !important; }
+
+/* Mantém documentos impressos claros e legíveis */
 @media print {
+  :root { color-scheme: light; }
   body {
     background: white !important;
     color: black !important;
   }
-  .no-print {
-    display: none !important;
-  }
-  .print-only {
-    display: block !important;
-  }
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
 }
